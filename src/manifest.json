@@ -1,0 +1,75 @@
+{
+  "$schema": "https://json.schemastore.org/chrome-manifest.json",
+  "chromium:manifest_version": 3,
+  "firefox:manifest_version": 2,
+  "version": "1.0.0",
+  "name": "BITE Confidential Wallet",
+  "description": "Confidential token viewer key manager for SKALE BITE protocol with WebAuthn biometric authentication",
+  "icons": {
+    "16": "images/icon.png",
+    "32": "images/icon.png",
+    "48": "images/icon.png",
+    "64": "images/icon.png",
+    "128": "images/icon.png"
+  },
+  "chromium:action": {
+    "default_icon": {
+      "16": "images/icon.png",
+      "32": "images/icon.png",
+      "48": "images/icon.png",
+      "64": "images/icon.png",
+      "128": "images/icon.png"
+    },
+    "default_title": "BITE Confidential Wallet"
+  },
+  "firefox:browser_action": {
+    "default_icon": {
+      "16": "images/icon.png",
+      "32": "images/icon.png",
+      "48": "images/icon.png",
+      "64": "images/icon.png",
+      "128": "images/icon.png"
+    },
+    "default_title": "BITE Confidential Wallet"
+  },
+  "chromium:side_panel": {
+    "default_path": "sidebar/index.html",
+    "default_title": "BITE Wallet"
+  },
+  "firefox:sidebar_action": {
+    "default_panel": "sidebar/index.html",
+    "default_title": "BITE Wallet"
+  },
+  "chromium:permissions": [
+    "sidePanel",
+    "storage",
+    "activeTab"
+  ],
+  "firefox:permissions": [
+    "storage",
+    "activeTab"
+  ],
+  "chromium:host_permissions": [
+    "https://*.skalenodes.com/*",
+    "https://*/*"
+  ],
+  "background": {
+    "chromium:service_worker": "background.js",
+    "firefox:scripts": [
+      "background.js"
+    ]
+  },
+  "content_security_policy": {
+    "chromium:extension_pages": "script-src 'self' 'wasm-unsafe-eval'; object-src 'self'",
+    "firefox:content_security_policy": "script-src 'self' 'wasm-unsafe-eval'; object-src 'self'"
+  },
+  "web_accessible_resources": [
+    {
+      "chromium:resources": ["sidebar/index.html", "webauthn-helper.html", "webauthn-helper.js"],
+      "chromium:matches": ["<all_urls>"],
+      "firefox:resources": ["sidebar/index.html", "webauthn-helper.html", "webauthn-helper.js"],
+      "firefox:matches": ["<all_urls>"]
+    }
+  ],
+  "author": "TheGreatAxios"
+}

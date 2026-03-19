@@ -1,0 +1,40 @@
+{
+  "private": true,
+  "name": "bite-confidential-wallet",
+  "description": "Confidential token viewer key manager for SKALE BITE protocol with WebAuthn biometric authentication",
+  "version": "1.0.0",
+  "license": "MIT",
+  "type": "module",
+  "author": {
+    "name": "TheGreatAxios",
+    "email": "your@email.com",
+    "url": "https://yourwebsite.com"
+  },
+  "scripts": {
+    "dev": "extension dev",
+    "start": "extension start",
+    "build": "extension build",
+    "preview": "extension preview",
+    "build:chrome": "extension build --browser chrome",
+    "build:firefox": "extension build --browser firefox",
+    "build:edge": "extension build --browser edge",
+    "typecheck": "tsc --noEmit"
+  },
+  "dependencies": {
+    "@skalenetwork/bite": "^0.7.2",
+    "@types/elliptic": "^6.4.18",
+    "@types/react": "^19.2.14",
+    "@types/react-dom": "^19.2.3",
+    "elliptic": "^6.6.1",
+    "ethers": "^6.16.0",
+    "keccak": "^3.0.4",
+    "react": "^19.2.4",
+    "react-dom": "^19.2.4"
+  },
+  "devDependencies": {
+    "extension": "^3.10.0",
+    "react-refresh": "^0.18.0",
+    "typescript": "^5.9.3"
+  },
+  "packageManager": "npm@11.6.2"
+}
