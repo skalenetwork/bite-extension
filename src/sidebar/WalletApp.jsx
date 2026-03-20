@@ -21,6 +21,36 @@ export default function WalletApp() {
   const [error, setError] = useState(null);
   const [webAuthnAvailable, setWebAuthnAvailable] = useState(false);
   const [isSidebarEmbedded, setIsSidebarEmbedded] = useState(false);
+  const [registeredStatus, setRegisteredStatus] = useState({});
+  const [holderAddresses, setHolderAddresses] = useState({});
+
+  // Load saved holder addresses on mount
+  useEffect(() => {
+    const saved = localStorage.getItem('bite-holder-addresses');
+    if (saved) {
+      try {
+        setHolderAddresses(JSON.parse(saved));
+      } catch (e) {
+        console.error('Failed to load holder addresses:', e);
+      }
+    }
+  }, []);
+
+  // Save holder addresses when they change
+  useEffect(() => {
+    localStorage.setItem('bite-holder-addresses', JSON.stringify(holderAddresses));
+  }, [holderAddresses]);
+
+  const setHolderAddressForToken = (tokenAddress, address) => {
+    setHolderAddresses(prev => ({
+      ...prev,
+      [tokenAddress]: address
+    }));
+  };
+
+  const getHolderAddressForToken = (tokenAddress) => {
+    return holderAddresses[tokenAddress] || '';
+  };
 
   // Check WebAuthn availability
   useEffect(() => {
@@ -44,6 +74,45 @@ export default function WalletApp() {
 
     return () => clearInterval(interval);
   }, []);
+
+  // Check registration status when selected key changes
+  useEffect(() => {
+    if (selectedKey) {
+      // Reset registration status when key changes
+      // We'll determine actual status when user tries to unlock
+      setRegisteredStatus({});
+    }
+  }, [selectedKey]);
+
+  const checkRegistrationStatus = async (key, holderAddress) => {
+    console.log('[WalletApp] Checking registration status for holder:', holderAddress);
+    
+    const status = {};
+    for (const token of Object.values(CONFIDENTIAL_TOKENS)) {
+      console.log(`[WalletApp] Checking registration for ${token.symbol}...`);
+      try {
+        // Try to get encrypted balance - if it succeeds, viewer is registered
+        const encrypted = await balanceService.getEncryptedBalance(token.address, holderAddress);
+        console.log(`[WalletApp] ${token.symbol} result:`, encrypted ? 'has data' : 'empty');
+        // If we got any non-empty result, assume registered
+        status[token.address] = encrypted && encrypted.length > 2 && encrypted !== '0x';
+      } catch (err: any) {
+        // Check if it's the specific "no viewer registered" error
+        if (err.message?.includes('NoViewerRegisteredForHolder') || 
+            err.message?.includes('9322c6ea')) {
+          console.log(`[WalletApp] ${token.symbol}: No viewer registered for this holder`);
+          status[token.address] = false;
+        } else {
+          console.log(`[WalletApp] ${token.symbol} error:`, err.message);
+          status[token.address] = false;
+        }
+      }
+    }
+    
+    console.log('[WalletApp] Registration status:', status);
+    setRegisteredStatus(status);
+    return status;
+  };
 
   const loadKeys = async () => {
     try {
@@ -101,21 +170,24 @@ export default function WalletApp() {
     }
   };
 
-  const handleViewBalance = async (key, token) => {
+  const handleViewBalance = async (key, token, holderAddress) => {
     try {
       setError(null);
       setLoading({ ...loading, [`${key.id}-${token.address}`]: true });
 
-      // Get the holder address - for now, use the public key's derived address
-      // In production, this would be the user's wallet address
-      const { ethers } = await import('ethers');
-      const publicKey = key.publicKeyHex;
-      const holderAddress = ethers.computeAddress(publicKey);
+      // Get holder address - must be provided
+      const addressToUse = holderAddress?.trim();
+      if (!addressToUse) {
+        throw new Error('Please enter the token holder address in the balance card');
+      }
+
+      console.log('[WalletApp] Viewing balance for holder:', addressToUse);
+      console.log('[WalletApp] Using viewer key:', key.publicKeyHex.slice(0, 30) + '...');
 
       const decryptedBalance = await balanceService.getDecryptedBalance(
         key.id,
         token,
-        holderAddress
+        addressToUse
       );
 
       setBalances({
@@ -125,8 +197,24 @@ export default function WalletApp() {
           [token.address]: decryptedBalance,
         },
       });
-    } catch (err) {
-      setError('Failed to decrypt balance: ' + err.message);
+      
+      // Clear any previous errors
+      setError(null);
+    } catch (err: any) {
+      console.error('[WalletApp] View balance error:', err);
+      
+      let errorMsg = err.message || 'Failed to decrypt balance';
+      
+      // Provide clear, actionable error messages
+      if (errorMsg.includes('NoViewerRegisteredForHolder') || errorMsg.includes('9322c6ea')) {
+        errorMsg = 'This holder address has not registered your viewer key. The holder must register your public key on the contract first.';
+      } else if (errorMsg.includes('execution reverted') || errorMsg.includes('CALL_EXCEPTION')) {
+        errorMsg = 'Could not fetch balance. The holder address may not exist or the viewer key is not registered.';
+      } else if (errorMsg.includes('Decryption failed')) {
+        errorMsg = 'Decryption failed. The encrypted data format may not match your key, or the wrong private key is being used.';
+      }
+      
+      setError(errorMsg);
     } finally {
       setLoading({ ...loading, [`${key.id}-${token.address}`]: false });
     }
@@ -160,7 +248,10 @@ export default function WalletApp() {
         accounts[0]
       );
 
+      console.log('[WalletApp] Transaction request prepared:', JSON.stringify(txRequest, null, 2));
+
       // Send transaction via MetaMask
+      console.log('[WalletApp] Sending to MetaMask...');
       const txHash = await window.ethereum?.request({
         method: 'eth_sendTransaction',
         params: [txRequest],
@@ -169,7 +260,19 @@ export default function WalletApp() {
       alert(`Registration submitted! Transaction: ${txHash}`);
       setIsRegisterModalOpen(false);
     } catch (err) {
-      setError('Failed to register key: ' + err.message);
+      console.error('[WalletApp] Registration error:', err);
+      let errorMsg = err.message || 'Failed to register key';
+      
+      // Provide more helpful error messages
+      if (errorMsg.includes('RLP')) {
+        errorMsg = 'Transaction encoding error. The encrypted data format may be incompatible with MetaMask. Try using a different wallet or check console for details.';
+      } else if (errorMsg.includes('insufficient funds')) {
+        errorMsg = 'Insufficient sFUEL for gas. Get test tokens from https://faucet.skale.network/';
+      } else if (errorMsg.includes('user rejected')) {
+        errorMsg = 'Transaction was rejected in MetaMask.';
+      }
+      
+      setError('Failed to register key: ' + errorMsg);
     } finally {
       setLoading({ ...loading, register: false });
     }
@@ -274,7 +377,9 @@ export default function WalletApp() {
                   keyData={selectedKey}
                   balance={balances[selectedKey.id]?.[token.address]}
                   loading={loading[`${selectedKey.id}-${token.address}`]}
-                  onViewBalance={() => handleViewBalance(selectedKey, token)}
+                  onViewBalance={() => handleViewBalance(selectedKey, token, getHolderAddressForToken(token.address))}
+                  onHolderAddressChange={(addr, value) => setHolderAddressForToken(addr, value)}
+                  isRegistered={registeredStatus[token.address] || false}
                 />
               ))}
             </div>

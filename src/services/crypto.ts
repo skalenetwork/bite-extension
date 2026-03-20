@@ -1,11 +1,10 @@
 /**
- * Crypto service for secp256k1 operations in browser
- * Uses elliptic library for secp256k1, WebCrypto for AES
- * Pure browser APIs - no Node.js Buffer dependency
+ * Browser-compatible ECIES decryption
+ * Based on working Node.js implementation, adapted for WebCrypto API
  */
 
 import { ec as EllipticCurve } from 'elliptic';
-import { keccak256, toBeArray, hexlify } from 'ethers';
+import { keccak256 } from 'ethers';
 
 const EC = new EllipticCurve('secp256k1');
 
@@ -32,20 +31,14 @@ export class CryptoService {
    * Uses deterministic derivation: privateKey = keccak256(signature[0:32])
    */
   static derivePrivateKeyFromSignature(signature: Uint8Array): string {
-    // Take first 32 bytes of signature
     const seed = signature.slice(0, 32);
-    
-    // Keccak256 hash using ethers.js (browser compatible)
-    // ethers.keccak256 accepts hex string, so convert bytes to hex first
     const seedHex = '0x' + bytesToHex(seed);
-    const privateKeyHex = keccak256(seedHex);
-    
-    return privateKeyHex;
+    return keccak256(seedHex);
   }
 
   /**
-   * Derive public key from private key using secp256k1
-   * Returns uncompressed public key (65 bytes, hex string with 0x prefix)
+   * Derive public key from private key
+   * Returns uncompressed public key (65 bytes, hex with 0x04 prefix)
    */
   static derivePublicKeyFromPrivate(privateKeyHex: string): string {
     const privateKey = privateKeyHex.startsWith('0x') 
@@ -63,49 +56,61 @@ export class CryptoService {
   }
 
   /**
-   * Generate random secp256k1 key pair
-   */
-  static generateKeyPair(): { privateKey: string; publicKey: string } {
-    const keyPair = EC.genKeyPair();
-    const privateKey = keyPair.getPrivate('hex').padStart(64, '0');
-    const publicKey = this.derivePublicKeyFromPrivate(privateKey);
-    
-    return {
-      privateKey: '0x' + privateKey,
-      publicKey,
-    };
-  }
-
-  /**
    * Decrypt confidential token balance using ECIES
    * Format: IV(16 bytes) + ephemeralPubKey(33 bytes compressed) + ciphertext
+   * 
+   * Based on working Node.js implementation:
+   * 1. Extract IV, ephemeral key, ciphertext
+   * 2. ECDH with secp256k1 to get shared secret
+   * 3. SHA-256 to derive AES key
+   * 4. AES-256-CBC decryption
    */
   static async decryptBalance(
     privateKeyHex: string,
     encryptedDataHex: string
   ): Promise<bigint> {
-    // Remove 0x prefix and convert to bytes
+    console.log('[CryptoService] Starting ECIES decryption...');
+    
+    // Remove 0x prefix
+    const cleanPrivateKey = privateKeyHex.startsWith('0x') 
+      ? privateKeyHex.slice(2) 
+      : privateKeyHex;
     const cleanEncryptedData = encryptedDataHex.startsWith('0x')
       ? encryptedDataHex.slice(2)
       : encryptedDataHex;
+
+    const encryptedData = hexToBytes(cleanEncryptedData);
+    console.log('[CryptoService] Encrypted data length:', encryptedData.length, 'bytes');
+
+    // Extract parts: IV(16) + ephemeralPubKey(33) + ciphertext
+    const iv = encryptedData.slice(0, 16);
+    const ephemeralPublicKey = encryptedData.slice(16, 16 + 33);
+    const ciphertext = encryptedData.slice(16 + 33);
     
-    const encryptedBytes = hexToBytes(cleanEncryptedData);
+    console.log('[CryptoService] IV:', bytesToHex(iv));
+    console.log('[CryptoService] Ephemeral pubkey:', bytesToHex(ephemeralPublicKey));
+    console.log('[CryptoService] Ciphertext length:', ciphertext.length, 'bytes');
 
-    // Extract components
-    const iv = encryptedBytes.slice(0, 16);
-    const ephemeralPublicKey = encryptedBytes.slice(16, 16 + 33);
-    const ciphertext = encryptedBytes.slice(16 + 33);
-
-    // Derive shared secret using ECDH
-    const sharedSecret = this.computeSharedSecret(
-      privateKeyHex,
-      ephemeralPublicKey
-    );
+    // Derive Shared Secret using ECDH
+    console.log('[CryptoService] Computing ECDH shared secret...');
+    const ecdh = EC.keyFromPrivate(cleanPrivateKey, 'hex');
+    const ephemeralPoint = EC.keyFromPublic(bytesToHex(ephemeralPublicKey), 'hex');
+    
+    // Compute shared secret: ephemeralPubKey * privateKey
+    // This gives us a point, we take the X coordinate
+    const sharedPoint = ephemeralPoint.getPublic().mul(ecdh.getPrivate());
+    const sharedSecretHex = sharedPoint.getX().toString('hex').padStart(64, '0');
+    const sharedSecret = hexToBytes(sharedSecretHex);
+    
+    console.log('[CryptoService] Shared secret:', sharedSecretHex.slice(0, 20) + '...');
 
     // Derive AES key: SHA-256(sharedSecret)
-    const aesKey = await this.deriveAESKey(sharedSecret);
+    const aesKeyBuffer = await crypto.subtle.digest('SHA-256', sharedSecret);
+    const aesKey = new Uint8Array(aesKeyBuffer);
+    console.log('[CryptoService] AES key derived:', bytesToHex(aesKey).slice(0, 20) + '...');
 
-    // Decrypt using WebCrypto AES-256-CBC
+    // Decrypt: AES-256-CBC
+    console.log('[CryptoService] Decrypting with AES-256-CBC...');
     const cryptoKey = await crypto.subtle.importKey(
       'raw',
       aesKey,
@@ -114,45 +119,24 @@ export class CryptoService {
       ['decrypt']
     );
 
-    const decrypted = await crypto.subtle.decrypt(
-      { name: 'AES-CBC', iv },
-      cryptoKey,
-      ciphertext
-    );
+    try {
+      const decrypted = await crypto.subtle.decrypt(
+        { name: 'AES-CBC', iv },
+        cryptoKey,
+        ciphertext
+      );
 
-    // Convert to BigInt
-    const hexString = '0x' + bytesToHex(new Uint8Array(decrypted));
-    return BigInt(hexString);
-  }
-
-  /**
-   * Compute ECDH shared secret using secp256k1
-   */
-  private static computeSharedSecret(
-    privateKeyHex: string,
-    ephemeralPublicKey: Uint8Array
-  ): Uint8Array {
-    const privateKey = privateKeyHex.startsWith('0x') 
-      ? privateKeyHex.slice(2) 
-      : privateKeyHex;
-    
-    const keyPair = EC.keyFromPrivate(privateKey, 'hex');
-    const ephemeralPoint = EC.keyFromPublic(bytesToHex(ephemeralPublicKey), 'hex');
-    
-    const shared = keyPair.derive(ephemeralPoint.getPublic());
-    // Convert to 32-byte array
-    let sharedHex = shared.toString(16);
-    if (sharedHex.length < 64) {
-      sharedHex = sharedHex.padStart(64, '0');
+      const decryptedBytes = new Uint8Array(decrypted);
+      console.log('[CryptoService] Decrypted length:', decryptedBytes.length, 'bytes');
+      
+      // Convert to hex string
+      const decryptedHex = '0x' + bytesToHex(decryptedBytes);
+      console.log('[CryptoService] Decrypted value:', decryptedHex);
+      
+      return BigInt(decryptedHex);
+    } catch (error) {
+      console.error('[CryptoService] AES decryption failed:', error);
+      throw new Error('AES decryption failed: ' + (error instanceof Error ? error.message : 'Unknown error'));
     }
-    return hexToBytes(sharedHex);
-  }
-
-  /**
-   * Derive AES key from shared secret using SHA-256
-   */
-  private static async deriveAESKey(sharedSecret: Uint8Array): Promise<Uint8Array> {
-    const hashBuffer = await crypto.subtle.digest('SHA-256', sharedSecret);
-    return new Uint8Array(hashBuffer);
   }
 }

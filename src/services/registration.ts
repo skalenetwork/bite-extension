@@ -54,6 +54,7 @@ export class RegistrationService {
   /**
    * Build a complete transaction object for sending via Ethereum provider
    * This can be passed to window.ethereum.request({ method: 'eth_sendTransaction', params: [tx] })
+   * Note: MetaMask will add the 'from' field automatically
    */
   buildTransactionRequest(
     registrationData: Awaited<ReturnType<typeof this.prepareViewerKeyRegistration>>,
@@ -63,17 +64,25 @@ export class RegistrationService {
     to: string;
     data: string;
     value: string;
-    gasLimit: string;
+    gas: string;
   } {
     // Convert deposit to wei
     const depositWei = ethers.parseEther(registrationData.depositAmount);
+    
+    console.log('[RegistrationService] Building transaction:', {
+      from: fromAddress,
+      to: registrationData.payload.to,
+      dataLength: registrationData.payload.data.length,
+      dataPreview: registrationData.payload.data.slice(0, 50) + '...',
+      value: depositWei.toString(),
+    });
 
     return {
       from: fromAddress,
       to: registrationData.payload.to,
       data: registrationData.payload.data,
       value: '0x' + depositWei.toString(16),
-      gasLimit: '0x493e0', // 300000 - standard for BITE transactions
+      gas: '0x493e0', // 300000
     };
   }
 

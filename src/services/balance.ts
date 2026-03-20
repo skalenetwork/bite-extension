@@ -24,50 +24,75 @@ export class BalanceService {
 
   /**
    * Get and decrypt balance for a specific token using a viewer key
-   * Flow:
-   * 1. Check if we have a valid session (5-minute window)
-   * 2. If not, prompt for WebAuthn authentication
-   * 3. Fetch encrypted balance from chain
-   * 4. Decrypt using authenticated private key
-   * 5. Cache decrypted result for 5 minutes
    */
   async getDecryptedBalance(
     keyId: string,
     token: TokenConfig,
     holderAddress: string
   ): Promise<DecryptedBalance> {
+    console.log('[BalanceService] Getting decrypted balance for:', { 
+      keyId, 
+      token: token.symbol, 
+      holderAddress 
+    });
+    
     // Initialize storage
     await viewerKeyStorage.init();
 
+    // Get the key pair from storage
+    const keyPair = await viewerKeyStorage.getKey(keyId);
+    if (!keyPair) {
+      throw new Error('Key not found. Please create a viewer key first.');
+    }
+
+    // Check if private key is stored (old keys won't have it)
+    if (!keyPair.privateKeyHex) {
+      throw new Error('This key was created with an older version and cannot decrypt balances. Please create a new viewer key.');
+    }
+
     // Check for existing valid session
     let session = await viewerKeyStorage.getValidSession(keyId);
-    let privateKey: string;
-
-    if (session) {
-      // Use cached session
-      privateKey = session.privateKeyHex;
-    } else {
-      // Authenticate with WebAuthn to derive key
-      privateKey = await PasskeyService.authenticateAndDeriveKey(keyId);
+    
+    if (!session) {
+      console.log('[BalanceService] No cached session, authenticating with WebAuthn...');
+      // Authenticate with WebAuthn (this just validates the user, doesn't derive key)
+      const authenticated = await PasskeyService.authenticate(keyId);
       
-      // Create new session
+      if (!authenticated) {
+        throw new Error('Authentication failed. Please try again.');
+      }
+      
+      // Create new session with stored private key
       session = {
         keyId,
-        privateKeyHex: privateKey,
+        privateKeyHex: keyPair.privateKeyHex,
         authenticatedAt: Date.now(),
         expiresAt: Date.now() + SESSION_DURATION_MS,
       };
       
       await viewerKeyStorage.saveSession(session);
+      console.log('[BalanceService] Session created with stored key');
     }
+    
+    const privateKey = session.privateKeyHex;
 
     // Fetch encrypted balance
-    const encryptedBalance = await this.biteService.getEncryptedBalance(
-      token.address,
-      holderAddress
-    );
+    console.log('[BalanceService] Fetching encrypted balance from contract...');
+    let encryptedBalance: string;
+    try {
+      encryptedBalance = await this.biteService.getEncryptedBalance(
+        token.address,
+        holderAddress
+      );
+      console.log('[BalanceService] Encrypted balance received:', encryptedBalance?.slice(0, 50) + '...');
+    } catch (error: any) {
+      console.error('[BalanceService] Failed to fetch encrypted balance:', error);
+      throw new Error(`Failed to fetch balance: ${error.message || 'Unknown error'}`);
+    }
 
-    if (!encryptedBalance || encryptedBalance.length <= 2) {
+    // Check if empty result
+    if (!encryptedBalance || encryptedBalance === '0x' || encryptedBalance.length <= 2) {
+      console.log('[BalanceService] No encrypted balance found (empty result)');
       return {
         token,
         amount: '0',
@@ -76,13 +101,22 @@ export class BalanceService {
     }
 
     // Decrypt balance
-    const decryptedAmount = await CryptoService.decryptBalance(
-      privateKey,
-      encryptedBalance
-    );
+    console.log('[BalanceService] Decrypting balance...');
+    let decryptedAmount: bigint;
+    try {
+      decryptedAmount = await CryptoService.decryptBalance(
+        privateKey,
+        encryptedBalance
+      );
+      console.log('[BalanceService] Decrypted amount:', decryptedAmount.toString());
+    } catch (error: any) {
+      console.error('[BalanceService] Decryption failed:', error);
+      throw new Error(`Decryption failed: ${error.message || 'Unknown error'}`);
+    }
 
     // Format with decimals
     const formattedAmount = this.formatWithDecimals(decryptedAmount, token.decimals);
+    console.log('[BalanceService] Formatted amount:', formattedAmount);
 
     return {
       token,
@@ -110,7 +144,6 @@ export class BalanceService {
 
   /**
    * Get encrypted balance without decrypting
-   * Useful for checking if a registration exists
    */
   async getEncryptedBalance(
     tokenAddress: string,
@@ -119,19 +152,9 @@ export class BalanceService {
     try {
       return await this.biteService.getEncryptedBalance(tokenAddress, holderAddress);
     } catch (error) {
+      console.log('[BalanceService] Error fetching encrypted balance:', error);
       return null;
     }
-  }
-
-  /**
-   * Check if a holder has a registered viewer key for a token
-   */
-  async hasRegisteredViewerKey(
-    tokenAddress: string,
-    holderAddress: string
-  ): Promise<boolean> {
-    const encrypted = await this.getEncryptedBalance(tokenAddress, holderAddress);
-    return encrypted !== null && encrypted.length > 2;
   }
 
   /**
@@ -153,21 +176,6 @@ export class BalanceService {
     }
     
     return `${integerPart}.${trimmedFractional}`;
-  }
-
-  /**
-   * Get token metadata
-   */
-  async getTokenMetadata(tokenAddress: string): Promise<TokenConfig | null> {
-    try {
-      const metadata = await this.biteService.getTokenMetadata(tokenAddress);
-      return {
-        address: tokenAddress,
-        ...metadata,
-      };
-    } catch (error) {
-      return null;
-    }
   }
 }
 

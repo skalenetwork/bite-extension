@@ -125,10 +125,15 @@ export class PasskeyService {
       
       // Derive secp256k1 keypair
       console.log('[Passkey] Deriving key from signature...');
+      console.log('[Passkey] Signature length:', signature.length);
+      console.log('[Passkey] Signature (first 32 bytes hex):', Array.from(signature.slice(0, 32)).map(b => b.toString(16).padStart(2, '0')).join(''));
+      
       const privateKey = CryptoService.derivePrivateKeyFromSignature(signature);
       const publicKey = CryptoService.derivePublicKeyFromPrivate(privateKey);
       
-      console.log('[Passkey] Key derived:', publicKey.slice(0, 20) + '...');
+      console.log('[Passkey] Full public key:', publicKey);
+      console.log('[Passkey] Public key length:', publicKey.length, 'chars');
+      console.log('[Passkey] Public key starts with:', publicKey.slice(0, 10));
 
       // Generate default label
       const keyCount = await this.getKeyCount();
@@ -139,6 +144,7 @@ export class PasskeyService {
         label: defaultLabel,
         credentialId: result.credentialId,
         publicKeyHex: publicKey,
+        privateKeyHex: privateKey, // Store the private key!
         createdAt: Date.now(),
       };
     } catch (error) {
@@ -148,30 +154,21 @@ export class PasskeyService {
   }
 
   /**
-   * Authenticate with existing passkey and return the signature
-   * Opens a popup window for the actual WebAuthn operation
+   * Authenticate with existing passkey
+   * Returns success/failure - the actual key is stored in IndexedDB
    */
-  static async authenticateAndGetSignature(credentialId: string): Promise<Uint8Array> {
+  static async authenticate(credentialId: string): Promise<boolean> {
     console.log('[Passkey] Authenticating via popup:', credentialId.slice(0, 20) + '...');
     
     try {
       const result = await this.openWebAuthnPopup('auth', { credentialId });
       
-      console.log('[Passkey] Got signature from popup');
-      return new Uint8Array(result.signature);
+      console.log('[Passkey] Authentication successful');
+      return true;
     } catch (error) {
       console.error('[Passkey] Authentication error:', error);
-      throw error;
+      return false;
     }
-  }
-
-  /**
-   * Authenticate and derive the private key for decryption
-   */
-  static async authenticateAndDeriveKey(credentialId: string): Promise<string> {
-    console.log('[Passkey] Authenticating and deriving key...');
-    const signature = await this.authenticateAndGetSignature(credentialId);
-    return CryptoService.derivePrivateKeyFromSignature(signature);
   }
 
   /**

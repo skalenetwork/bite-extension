@@ -3,6 +3,7 @@ export interface ViewerKeyPair {
   label: string;
   credentialId: string;
   publicKeyHex: string;
+  privateKeyHex: string; // Now storing the private key
   createdAt: number;
 }
 
