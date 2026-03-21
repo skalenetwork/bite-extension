@@ -59,6 +59,9 @@
     .check-item::before { content: '○'; font-size: 16px; }
     .check-item.pass::before { content: '✓'; color: #10b981; font-weight: bold; }
     .check-item.fail::before { content: '✗'; color: #ef4444; font-weight: bold; }
+    .warning-box { background: #fffbeb; border: 1px solid #f59e0b; border-radius: 8px; padding: 12px; margin-bottom: 16px; color: #92400e; }
+    .warning-box strong { display: block; margin-bottom: 4px; }
+    .warning-box p { margin: 0; font-size: 13px; }
   </style>
 </head>
 <body>
@@ -66,6 +69,11 @@
     <div class="icon" id="icon">🔐</div>
     <h1 id="title">Create Secure Passkey</h1>
     <p class="subtitle" id="subtitle">Set up biometric authentication to secure your confidential token wallet.</p>
+    
+    <div id="warning-box" class="warning-box hidden">
+      <strong>⚠️ Don't close this window!</strong>
+      <p>Please complete the authentication to secure your wallet.</p>
+    </div>
     
     <div id="diagnostics" class="diagnostics hidden">
       <strong>Device Check:</strong>

@@ -1,153 +1,188 @@
-// Debug: Log that script loaded
-console.log('[WebAuthnHelper] Script loaded');
-
 try {
-  const RP_NAME = 'BITE Confidential Wallet';
+  const DEBUG = true;
+  function log(...args) {
+    if (DEBUG) {
+      console.log('[WebAuthnHelper]', ...args);
+    }
+  }
+
   const urlParams = new URLSearchParams(window.location.search);
   const operation = urlParams.get('op');
-  const label = urlParams.get('label') || 'Viewer Key';
-  const existingCredentialId = urlParams.get('credentialId');
-  
-  console.log('[WebAuthnHelper] Params:', { operation, label, existingCredentialId: existingCredentialId ? 'yes' : 'no' });
-  
-  let hasPlatformAuth = false;
-  
-  // Update UI for auth operation
-  if (operation === 'auth') {
-    document.getElementById('title').textContent = 'Unlock Wallet';
-    document.getElementById('subtitle').textContent = 'Authenticate to view your confidential balance.';
-    document.getElementById('authButton').textContent = '🔓 Authenticate';
-  }
+  const label = urlParams.get('label') || 'MyBITE Wallet';
+  const credentialId = urlParams.get('credentialId');
+  const purpose = urlParams.get('purpose') || 'unlock';
 
-  // Run diagnostics on load
-  window.onload = async function() {
-    document.getElementById('diagnostics').classList.remove('hidden');
-    
-    // Check 1: WebAuthn API
-    const webauthnAvailable = typeof window.PublicKeyCredential !== 'undefined';
-    updateCheck('check-webauthn', webauthnAvailable);
-    
-    if (!webauthnAvailable) {
-      showError('WebAuthn is not supported in this browser. Please use Chrome, Edge, or Safari.');
-      document.getElementById('authButton').disabled = true;
-      return;
-    }
-    
-    // Check 2: Platform authenticator
-    try {
-      hasPlatformAuth = await PublicKeyCredential.isUserVerifyingPlatformAuthenticatorAvailable();
-      updateCheck('check-platform', hasPlatformAuth);
-      
-      if (!hasPlatformAuth) {
-        document.getElementById('subtitle').innerHTML = 
-          '<strong style="color: #f59e0b;">⚠️ No biometric authenticator found</strong><br><br>' +
-          'Please set up Face ID, Touch ID, Windows Hello, or a security key first.<br><br>' +
-          '<small>macOS: System Settings → Touch ID & Password<br>' +
-          'iOS: Settings → Face ID & Passcode<br>' +
-          'Windows: Settings → Accounts → Sign-in options</small>';
-        document.getElementById('authButton').textContent = '🔓 Try Anyway (Security Key)';
-      }
-    } catch (e) {
-      updateCheck('check-platform', false);
-    }
-    
-    // Check 3: User verification capability
-    updateCheck('check-userverification', true);
+  log('Initialized with params:', { operation, label, credentialId: credentialId?.slice(0, 20) + '...', purpose });
+
+  const state = {
+    hasPlatformAuth: false,
   };
-  
-  function updateCheck(id, pass) {
-    const el = document.getElementById(id);
-    el.classList.add(pass ? 'pass' : 'fail');
-  }
 
-  function setLoading(isLoading) {
-    const button = document.getElementById('authButton');
-    const status = document.getElementById('status');
-    
-    if (isLoading) {
-      button.disabled = true;
-      button.innerHTML = '<span class="spinner"></span> Waiting for device...';
-      status.innerHTML = '<span class="spinner"></span> Check for system prompt...<br><small>Look for Face ID / Touch ID / PIN dialog on your device</small>';
-      status.classList.remove('hidden');
-      document.getElementById('icon').textContent = '👆';
-      document.getElementById('diagnostics').classList.add('hidden');
-    } else {
-      button.disabled = false;
-      button.textContent = operation === 'auth' ? '🔓 Authenticate' : '🔓 Start Setup';
+  function setText(id, value) {
+    const element = document.getElementById(id);
+    if (element) {
+      element.textContent = value;
     }
   }
 
-  function showError(message) {
-    document.getElementById('error').innerHTML = message;
-    document.getElementById('error').classList.remove('hidden');
-    document.getElementById('status').classList.add('hidden');
-    document.getElementById('authButton').innerHTML = '🔄 Try Again';
+  function toggleHidden(id, hidden) {
+    const element = document.getElementById(id);
+    if (element) {
+      element.classList.toggle('hidden', hidden);
+    }
+  }
+
+  function updateCheck(id, passed) {
+    const element = document.getElementById(id);
+    if (!element) return;
+
+    element.classList.remove('pass', 'fail');
+    element.classList.add(passed ? 'pass' : 'fail');
+  }
+
+  function showError(message, details) {
+    log('Showing error:', message, details);
+    setText('error', message + (details ? `\n(${details})` : ''));
+    toggleHidden('error', false);
+    toggleHidden('status', true);
+    setText('icon', 'X');
+    setText('authButton', 'Try Again');
     document.getElementById('authButton').disabled = false;
-    document.getElementById('icon').textContent = '❌';
+    
+    // Also send error to parent
+    postError(message, details);
   }
 
   function showSuccess(message) {
-    document.getElementById('success').textContent = message;
-    document.getElementById('success').classList.remove('hidden');
-    document.getElementById('status').classList.add('hidden');
+    log('Showing success:', message);
+    setText('success', message);
+    toggleHidden('success', false);
+    toggleHidden('status', true);
+    toggleHidden('diagnostics', true);
     document.getElementById('authButton').classList.add('hidden');
     document.getElementById('cancelButton').classList.add('hidden');
-    document.getElementById('icon').textContent = '✅';
-    document.getElementById('title').textContent = 'Success!';
-    document.getElementById('subtitle').classList.add('hidden');
-    document.getElementById('diagnostics').classList.add('hidden');
+    setText('icon', 'OK');
+    setText('title', 'Success');
   }
 
-  function cancelAndClose() {
-    if (window.opener) window.opener.postMessage({ type: 'WEBAUTHN_CANCELLED' }, '*');
-    window.close();
+  function setLoading(isLoading, message) {
+    const button = document.getElementById('authButton');
+    if (isLoading) {
+      button.disabled = true;
+      setText('authButton', 'Waiting for device...');
+      setText('status', message);
+      toggleHidden('status', false);
+      toggleHidden('diagnostics', true);
+      setText('icon', '...');
+      return;
+    }
+
+    button.disabled = false;
+    setText('authButton', operation === 'auth' ? 'Authenticate' : 'Start');
   }
 
-  function sendResult(type, data) {
-    if (window.opener) window.opener.postMessage({ type: type, payload: data }, '*');
+  function postMessage(type, payload) {
+    log('Posting message to parent:', type, payload);
+    if (!window.opener) {
+      log('ERROR: No window.opener available');
+      return;
+    }
+    window.opener.postMessage({ type, payload }, window.location.origin);
   }
 
-  async function startWebAuthn() {
-    console.log('[WebAuthnHelper] Starting WebAuthn process...');
-    document.getElementById('error').classList.add('hidden');
-    setLoading(true);
+  function postError(error, details) {
+    postMessage('WEBAUTHN_ERROR', { error, details });
+  }
 
+  function base64UrlToBuffer(base64url) {
+    const base64 = base64url.replace(/-/g, '+').replace(/_/g, '/');
+    const padded = base64.padEnd(Math.ceil(base64.length / 4) * 4, '=');
+    const binary = atob(padded);
+    const bytes = new Uint8Array(binary.length);
+
+    for (let index = 0; index < binary.length; index += 1) {
+      bytes[index] = binary.charCodeAt(index);
+    }
+
+    return bytes.buffer;
+  }
+
+  function prfInputFromPurpose(value) {
+    const source = new TextEncoder().encode(`mybite:${value}`);
+    const digest = crypto.subtle.digest('SHA-256', source);
+    return digest.then((hash) => new Uint8Array(hash));
+  }
+
+  async function getPrfAssertion(existingCredentialId, reason) {
+    log('Getting PRF assertion for credential:', existingCredentialId.slice(0, 20) + '...', 'purpose:', reason);
+    
     try {
-      if (operation === 'create') {
-        await createCredential();
-      } else if (operation === 'auth' && existingCredentialId) {
-        await authenticateExisting(existingCredentialId);
+      const first = await prfInputFromPurpose(reason);
+      log('PRF input hash generated');
+      
+      const allowCredentials = [{ type: 'public-key', id: base64UrlToBuffer(existingCredentialId) }];
+      log('Allow credentials:', allowCredentials.map(c => ({ type: c.type, idLength: c.id.byteLength })));
+      
+      log('Calling navigator.credentials.get with PRF extension...');
+      log('Waiting for system passkey prompt...');
+      
+      let assertion;
+      try {
+        assertion = await navigator.credentials.get({
+          publicKey: {
+            challenge: crypto.getRandomValues(new Uint8Array(32)),
+            allowCredentials,
+            userVerification: 'required',
+            extensions: {
+              prf: {
+                evalByCredential: {
+                  [existingCredentialId]: { first },
+                },
+              },
+            },
+          },
+        });
+      } catch (credentialError) {
+        log('❌ navigator.credentials.get failed:', credentialError.name, credentialError.message);
+        if (credentialError.name === 'NotAllowedError') {
+          throw new Error('Authentication was cancelled or denied. Please try again.');
+        } else if (credentialError.name === 'AbortError') {
+          throw new Error('Authentication was aborted. This might happen if the window loses focus.');
+        }
+        throw credentialError;
       }
-    } catch (error) {
-      console.error('[WebAuthnHelper] Error in startWebAuthn:', error);
-      setLoading(false);
+
+      if (!assertion) {
+        throw new Error('Passkey assertion returned null');
+      }
+
+      log('✅ Assertion received:', { id: assertion.id, type: assertion.type });
       
-      let errorMsg = error.message || 'Authentication failed';
+      const results = assertion.getClientExtensionResults?.();
+      log('Extension results:', results);
       
-      if (error.name === 'NotAllowedError') {
-        errorMsg = 'Permission denied. You may have cancelled the prompt or it timed out.<br><br><small>Try again or check if your device requires screen lock (PIN/password) to be enabled.</small>';
-      } else if (error.name === 'NotSupportedError') {
-        errorMsg = 'Your device or browser does not support this type of authentication.<br><br><small>Try using a security key (YubiKey) instead, or ensure your device has Face ID/Touch ID set up.</small>';
-      } else if (errorMsg.includes('cancelled')) {
-        errorMsg += '<br><br><small>Make sure to respond to the system prompt quickly - it may timeout after a few seconds.</small>';
+      const output = results?.prf?.results?.first;
+      if (!output) {
+        log('❌ PRF output not available in extension results');
+        log('This means the authenticator supports passkeys but not the PRF extension');
+        return null;
       }
       
-      showError(errorMsg);
+      const outputArray = new Uint8Array(output);
+      log('✅ PRF output received, length:', outputArray.length);
+      return outputArray;
+    } catch (err) {
+      log('❌ Error in getPrfAssertion:', err.name, err.message);
+      throw err;
     }
   }
-  
-  // Make functions globally available
-  window.startWebAuthn = startWebAuthn;
-  window.cancelAndClose = cancelAndClose;
 
   async function createCredential() {
-    console.log('[WebAuthnHelper] Creating credential...');
+    log('Creating new credential with label:', label);
     
-    const challenge = crypto.getRandomValues(new Uint8Array(32));
-    
-    const publicKeyOptions = {
-      challenge,
-      rp: { name: RP_NAME },
+    const publicKey = {
+      challenge: crypto.getRandomValues(new Uint8Array(32)),
+      rp: { name: 'MyBITE Wallet' },
       user: {
         id: crypto.getRandomValues(new Uint8Array(16)),
         name: `viewer-key-${Date.now()}`,
@@ -164,88 +199,204 @@ try {
       attestation: 'none',
     };
 
-    if (!hasPlatformAuth) {
-      publicKeyOptions.authenticatorSelection.userVerification = 'preferred';
+    if (!state.hasPlatformAuth) {
+      publicKey.authenticatorSelection.userVerification = 'preferred';
     }
 
-    console.log('[WebAuthnHelper] Options:', publicKeyOptions);
+    log('Calling navigator.credentials.create...');
+    const credential = await navigator.credentials.create({ publicKey });
+    if (!credential) {
+      throw new Error('No passkey credential was created.');
+    }
 
-    const credential = await navigator.credentials.create({ publicKey: publicKeyOptions });
+    log('Credential created:', { id: credential.id.slice(0, 20) + '...', type: credential.type });
     
-    if (!credential) throw new Error('No credential returned - prompt may have timed out');
+    let prfSupported = false;
 
-    console.log('[WebAuthnHelper] Created:', credential.id);
-    
-    document.getElementById('status').innerHTML = '<span class="spinner"></span> Completing setup...';
-    const signature = await authenticate(credential.id);
-    
-    showSuccess('Passkey created successfully!');
-    sendResult('WEBAUTHN_CREATE_SUCCESS', {
+    try {
+      log('Testing PRF capability...');
+      const prfOutput = await getPrfAssertion(credential.id, 'capability-check');
+      prfSupported = Boolean(prfOutput);
+      log('PRF capability check:', prfSupported ? 'supported' : 'not supported');
+    } catch (err) {
+      log('PRF capability check failed:', err.message);
+      prfSupported = false;
+    }
+
+    showSuccess('Passkey created successfully.');
+    postMessage('WEBAUTHN_CREATE_SUCCESS', {
       credentialId: credential.id,
-      signature: Array.from(signature),
-      label: label
+      prfSupported,
     });
-    
-    setTimeout(() => window.close(), 1500);
+    window.setTimeout(() => window.close(), 1200);
   }
 
-  async function authenticateExisting(credId) {
-    console.log('[WebAuthnHelper] Authenticating:', credId);
+  async function authenticateExisting(existingCredentialId) {
+    log('Authenticating existing credential:', existingCredentialId.slice(0, 20) + '...');
     
-    const challenge = crypto.getRandomValues(new Uint8Array(32));
+    const allowCredentials = [{ type: 'public-key', id: base64UrlToBuffer(existingCredentialId) }];
+    log('Allow credentials:', allowCredentials.map(c => ({ type: c.type, idLength: c.id.byteLength })));
     
-    const publicKeyOptions = {
-      challenge,
-      allowCredentials: [{ type: 'public-key', id: base64UrlToBuffer(credId) }],
-      userVerification: 'required',
-    };
-
-    const assertion = await navigator.credentials.get({ publicKey: publicKeyOptions });
-    
-    if (!assertion) throw new Error('Authentication failed');
-
-    const signature = new Uint8Array(assertion.response.signature);
-    
-    showSuccess('Authentication successful!');
-    sendResult('WEBAUTHN_AUTH_SUCCESS', { credentialId: credId, signature: Array.from(signature) });
-    
-    setTimeout(() => window.close(), 1500);
-  }
-
-  async function authenticate(credId) {
-    const challenge = crypto.getRandomValues(new Uint8Array(32));
+    log('Calling navigator.credentials.get...');
     const assertion = await navigator.credentials.get({
       publicKey: {
-        challenge,
-        allowCredentials: [{ type: 'public-key', id: base64UrlToBuffer(credId) }],
+        challenge: crypto.getRandomValues(new Uint8Array(32)),
+        allowCredentials,
         userVerification: 'required',
-      }
+      },
     });
+
+    if (!assertion) {
+      throw new Error('Authentication returned null assertion');
+    }
+
+    log('Authentication successful, assertion:', { id: assertion.id, type: assertion.type });
     
-    if (!assertion) throw new Error('Authentication failed');
-    return new Uint8Array(assertion.response.signature);
+    showSuccess('Authentication successful.');
+    postMessage('WEBAUTHN_AUTH_SUCCESS', { ok: true, credentialId: existingCredentialId });
+    window.setTimeout(() => window.close(), 1200);
   }
 
-  function base64UrlToBuffer(base64url) {
-    const base64 = base64url.replace(/-/g, '+').replace(/_/g, '/');
-    const binary = atob(base64);
-    const buffer = new ArrayBuffer(binary.length);
-    const view = new Uint8Array(buffer);
-    for (let i = 0; i < binary.length; i++) view[i] = binary.charCodeAt(i);
-    return buffer;
+  async function authenticateForPrf(existingCredentialId) {
+    log('PRF authentication for credential:', existingCredentialId.slice(0, 20) + '...', 'purpose:', purpose);
+    
+    try {
+      log('Starting PRF assertion - this will prompt for your passkey password/PIN again');
+      const prfOutput = await getPrfAssertion(existingCredentialId, purpose);
+      
+      if (!prfOutput) {
+        log('PRF output is null - PRF not supported by this authenticator');
+        showSuccess('Passkey PRF not available.');
+        postMessage('WEBAUTHN_PRF_SUCCESS', {
+          credentialId: existingCredentialId,
+          prfOutput: null,
+          prfSupported: false,
+        });
+      } else {
+        log('✅ PRF authentication successful, output length:', prfOutput.length);
+        showSuccess('✅ Wallet encrypted successfully!');
+        postMessage('WEBAUTHN_PRF_SUCCESS', {
+          credentialId: existingCredentialId,
+          prfOutput: Array.from(prfOutput),
+          prfSupported: true,
+        });
+      }
+      
+      log('Closing popup in 1.2 seconds...');
+      window.setTimeout(() => window.close(), 1200);
+    } catch (err) {
+      log('❌ PRF authentication failed:', err.name, err.message);
+      log('Error details:', err);
+      showError(err.message || 'Failed to encrypt wallet. Please try again.', err.name);
+      // Don't throw - we've already shown the error
+    }
   }
 
-  window.focus();
-  console.log('[WebAuthnHelper] Initialization complete');
-  
-  // Attach event listeners
-  document.addEventListener('DOMContentLoaded', function() {
-    console.log('[WebAuthnHelper] DOM loaded, attaching listeners');
+  async function startWebAuthn() {
+    log('startWebAuthn called for operation:', operation);
+    toggleHidden('error', true);
+    setLoading(true, 'Check your system passkey prompt.');
+
+    try {
+      if (operation === 'create') {
+        await createCredential();
+        return;
+      }
+
+      if (operation === 'auth') {
+        if (!credentialId) {
+          throw new Error('Missing credentialId for authentication operation');
+        }
+        await authenticateExisting(credentialId);
+        return;
+      }
+
+      if (operation === 'prf') {
+        if (!credentialId) {
+          throw new Error('Missing credentialId for PRF operation');
+        }
+        await authenticateForPrf(credentialId);
+        return;
+      }
+
+      throw new Error(`Unsupported passkey operation: ${operation}`);
+    } catch (error) {
+      log('startWebAuthn error:', error.name, error.message, error.stack);
+      setLoading(false, '');
+      const message = error instanceof Error ? error.message : 'Passkey operation failed.';
+      showError(message, error.name);
+    }
+  }
+
+  async function runDiagnostics() {
+    log('Running diagnostics...');
+    
+    const webauthnAvailable = typeof window.PublicKeyCredential !== 'undefined';
+    updateCheck('check-webauthn', webauthnAvailable);
+    log('WebAuthn available:', webauthnAvailable);
+
+    if (!webauthnAvailable) {
+      showError('WebAuthn is not supported in this browser.');
+      document.getElementById('authButton').disabled = true;
+      return;
+    }
+
+    try {
+      state.hasPlatformAuth = await PublicKeyCredential.isUserVerifyingPlatformAuthenticatorAvailable();
+      log('Platform authenticator available:', state.hasPlatformAuth);
+    } catch (err) {
+      log('Error checking platform authenticator:', err.message);
+      state.hasPlatformAuth = false;
+    }
+
+    updateCheck('check-platform', state.hasPlatformAuth);
+    updateCheck('check-userverification', true);
+
+    if (operation === 'auth' || operation === 'prf') {
+      if (operation === 'prf') {
+        setText('title', 'Step 2: Finalize Setup');
+        setText('subtitle', `Almost done! Click the button below to encrypt and secure your ${label}.`);
+        setText('authButton', '🔐 Complete Setup (Authenticate Again)');
+        // Show warning to not close window
+        toggleHidden('warning-box', false);
+        // Note: Removed auto-start to prevent popup crashes. User must click button.
+        log('PRF operation ready - waiting for user to click button');
+      } else {
+        setText('title', 'Unlock Wallet');
+        setText('subtitle', 'Authenticate with your passkey to continue.');
+      }
+    } else if (operation === 'create') {
+      setText('title', 'Step 1: Create Passkey');
+      setText('subtitle', `Create a secure passkey for ${label}. This will be used to protect your wallet.`);
+      setText('authButton', '🔓 Create Passkey');
+    }
+    
+    log('Diagnostics complete');
+  }
+
+  function cancelAndClose() {
+    log('User cancelled operation');
+    postMessage('WEBAUTHN_CANCELLED', {});
+    window.close();
+  }
+
+  window.addEventListener('DOMContentLoaded', () => {
+    log('DOMContentLoaded - setting up event listeners');
     document.getElementById('authButton').addEventListener('click', startWebAuthn);
     document.getElementById('cancelButton').addEventListener('click', cancelAndClose);
+    
+    // Signal to parent that we're ready
+    log('Sending READY signal to parent');
+    postMessage('WEBAUTHN_READY', {});
+    
+    runDiagnostics().catch((err) => {
+      log('Diagnostics failed:', err);
+      showError('Failed to initialize passkey helper.', err.message);
+    });
   });
   
-} catch (e) {
-  console.error('[WebAuthnHelper] Script initialization error:', e);
-  document.body.innerHTML = '<div style="padding: 40px; text-align: center; font-family: sans-serif;"><h2>Error Loading</h2><p style="color: red;">' + e.message + '</p><p>Please check browser console for details.</p></div>';
+  log('Script loaded, waiting for DOMContentLoaded...');
+} catch (error) {
+  console.error('[WebAuthnHelper] Fatal error:', error);
+  document.body.textContent = error instanceof Error ? error.message : 'Failed to load passkey helper.';
 }

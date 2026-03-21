@@ -1,0 +1,194 @@
+/**
+ * MyBITE Wallet - Light Theme Design System
+ * Clean, professional, highly readable fintech aesthetic
+ */
+
+/* === FONT IMPORTS === */
+@import url('https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@500;600;700;800&family=DM+Sans:opsz,wght@9..40,400;9..40,500;9..40,600&display=swap');
+
+/* === ROOT DESIGN TOKENS - LIGHT THEME === */
+:root {
+  /* === CORE COLORS - Light & Airy === */
+  --color-bg-primary: #FFFFFF;
+  --color-bg-secondary: #F8FAFC;
+  --color-bg-tertiary: #F1F5F9;
+  --color-bg-elevated: #FFFFFF;
+  
+  /* Primary Brand - Rich Blue */
+  --color-primary-50: #EFF6FF;
+  --color-primary-100: #DBEAFE;
+  --color-primary-200: #BFDBFE;
+  --color-primary-300: #93C5FD;
+  --color-primary-400: #60A5FA;
+  --color-primary-500: #3B82F6;
+  --color-primary-600: #2563EB;
+  --color-primary-700: #1D4ED8;
+  --color-primary-800: #1E40AF;
+  --color-primary-900: #1E3A8A;
+  
+  /* Accent - Electric Teal */
+  --color-accent-400: #2DD4BF;
+  --color-accent-500: #14B8A6;
+  --color-accent-600: #0D9488;
+  
+  /* Text Colors - High Contrast */
+  --color-text-primary: #0F172A;
+  --color-text-secondary: #334155;
+  --color-text-tertiary: #64748B;
+  --color-text-muted: #94A3B8;
+  --color-text-inverse: #FFFFFF;
+  
+  /* Border & Divider */
+  --color-border-light: #E2E8F0;
+  --color-border-medium: #CBD5E1;
+  --color-border-strong: #94A3B8;
+  
+  /* Semantic Colors */
+  --color-success-50: #F0FDF4;
+  --color-success-100: #DCFCE7;
+  --color-success-500: #22C55E;
+  --color-success-600: #16A34A;
+  --color-success-700: #15803D;
+  
+  --color-warning-50: #FFFBEB;
+  --color-warning-100: #FEF3C7;
+  --color-warning-500: #F59E0B;
+  --color-warning-600: #D97706;
+  --color-warning-700: #B45309;
+  
+  --color-error-50: #FEF2F2;
+  --color-error-100: #FEE2E2;
+  --color-error-500: #EF4444;
+  --color-error-600: #DC2626;
+  --color-error-700: #B91C1C;
+  
+  --color-info-50: #EFF6FF;
+  --color-info-100: #DBEAFE;
+  --color-info-500: #3B82F6;
+  --color-info-600: #2563EB;
+  
+  /* === SPACING SYSTEM - 4px base === */
+  --space-1: 4px;
+  --space-2: 8px;
+  --space-3: 12px;
+  --space-4: 16px;
+  --space-5: 20px;
+  --space-6: 24px;
+  --space-8: 32px;
+  --space-10: 40px;
+  --space-12: 48px;
+  --space-16: 64px;
+  
+  /* === TYPOGRAPHY === */
+  --font-heading: 'Plus Jakarta Sans', system-ui, sans-serif;
+  --font-body: 'DM Sans', system-ui, sans-serif;
+  --font-mono: 'SF Mono', 'Monaco', 'Inconsolata', monospace;
+  
+  /* Font Sizes */
+  --text-xs: 11px;
+  --text-sm: 12px;
+  --text-base: 14px;
+  --text-md: 15px;
+  --text-lg: 16px;
+  --text-xl: 18px;
+  --text-2xl: 20px;
+  --text-3xl: 24px;
+  --text-4xl: 30px;
+  
+  /* Font Weights */
+  --font-normal: 400;
+  --font-medium: 500;
+  --font-semibold: 600;
+  --font-bold: 700;
+  --font-extrabold: 800;
+  
+  /* Line Heights */
+  --leading-tight: 1.25;
+  --leading-normal: 1.5;
+  --leading-relaxed: 1.625;
+  
+  /* === BORDER RADIUS === */
+  --radius-sm: 6px;
+  --radius-md: 10px;
+  --radius-lg: 14px;
+  --radius-xl: 18px;
+  --radius-full: 9999px;
+  
+  /* === SHADOWS === */
+  --shadow-xs: 0 1px 2px rgba(15, 23, 42, 0.04);
+  --shadow-sm: 0 1px 3px rgba(15, 23, 42, 0.08), 0 1px 2px rgba(15, 23, 42, 0.04);
+  --shadow-md: 0 4px 6px -1px rgba(15, 23, 42, 0.08), 0 2px 4px -1px rgba(15, 23, 42, 0.04);
+  --shadow-lg: 0 10px 15px -3px rgba(15, 23, 42, 0.08), 0 4px 6px -2px rgba(15, 23, 42, 0.04);
+  --shadow-xl: 0 20px 25px -5px rgba(15, 23, 42, 0.08), 0 10px 10px -5px rgba(15, 23, 42, 0.04);
+  
+  /* === Z-INDEX SCALE === */
+  --z-dropdown: 100;
+  --z-sticky: 200;
+  --z-modal-backdrop: 300;
+  --z-modal: 400;
+  --z-toast: 500;
+  
+  /* === ANIMATION === */
+  --transition-fast: 100ms ease;
+  --transition-normal: 200ms ease;
+  --transition-slow: 300ms ease;
+}
+
+/* === SEMANTIC TOKEN MAPPING === */
+:root {
+  /* Backgrounds */
+  --bg-page: var(--color-bg-secondary);
+  --bg-surface: var(--color-bg-primary);
+  --bg-elevated: var(--color-bg-elevated);
+  --bg-muted: var(--color-bg-tertiary);
+  
+  /* Interactive */
+  --bg-hover: var(--color-bg-tertiary);
+  --bg-active: var(--color-primary-50);
+  --bg-selected: var(--color-primary-50);
+  
+  /* Borders */
+  --border-light: var(--color-border-light);
+  --border-medium: var(--color-border-medium);
+  --border-strong: var(--color-border-strong);
+  
+  /* Text */
+  --text-primary: var(--color-text-primary);
+  --text-secondary: var(--color-text-secondary);
+  --text-tertiary: var(--color-text-tertiary);
+  --text-muted: var(--color-text-muted);
+  --text-inverse: var(--color-text-inverse);
+  
+  /* Primary Brand */
+  --primary-50: var(--color-primary-50);
+  --primary-100: var(--color-primary-100);
+  --primary-500: var(--color-primary-500);
+  --primary-600: var(--color-primary-600);
+  --primary-700: var(--color-primary-700);
+  
+  /* Accent */
+  --accent-400: var(--color-accent-400);
+  --accent-500: var(--color-accent-500);
+  --accent-600: var(--color-accent-600);
+  
+  /* Status */
+  --success-bg: var(--color-success-50);
+  --success-border: var(--color-success-100);
+  --success-text: var(--color-success-700);
+  --success-icon: var(--color-success-600);
+  
+  --warning-bg: var(--color-warning-50);
+  --warning-border: var(--color-warning-100);
+  --warning-text: var(--color-warning-700);
+  --warning-icon: var(--color-warning-600);
+  
+  --error-bg: var(--color-error-50);
+  --error-border: var(--color-error-100);
+  --error-text: var(--color-error-700);
+  --error-icon: var(--color-error-600);
+  
+  --info-bg: var(--color-info-50);
+  --info-border: var(--color-info-100);
+  --info-text: var(--color-info-700);
+  --info-icon: var(--color-info-600);
+}

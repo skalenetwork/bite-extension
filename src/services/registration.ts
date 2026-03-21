@@ -1,4 +1,4 @@
-import { BiteService, CONFIDENTIAL_TOKENS, CONFIDENTIAL_TOKEN_ABI } from './bite';
+import { BiteService, CONFIDENTIAL_TOKENS } from './bite';
 import { ethers } from 'ethers';
 import type { RegistrationPayload } from '../types';
 
@@ -69,14 +69,6 @@ export class RegistrationService {
     // Convert deposit to wei
     const depositWei = ethers.parseEther(registrationData.depositAmount);
     
-    console.log('[RegistrationService] Building transaction:', {
-      from: fromAddress,
-      to: registrationData.payload.to,
-      dataLength: registrationData.payload.data.length,
-      dataPreview: registrationData.payload.data.slice(0, 50) + '...',
-      value: depositWei.toString(),
-    });
-
     return {
       from: fromAddress,
       to: registrationData.payload.to,
@@ -100,7 +92,7 @@ export class RegistrationService {
   async checkExistingRegistration(
     tokenAddress: string,
     userAddress: string,
-    publicKeyHex: string
+    _publicKeyHex: string
   ): Promise<boolean> {
     try {
       // Get the encrypted balance - if we can get it, the key exists
@@ -112,7 +104,7 @@ export class RegistrationService {
       );
       
       // If we got a non-empty result, there's a registration
-      return encryptedBalance && encryptedBalance.length > 2; // more than "0x"
+      return Boolean(encryptedBalance && encryptedBalance.length > 2); // more than "0x"
     } catch (error) {
       // If the call reverts or fails, no registration exists
       return false;

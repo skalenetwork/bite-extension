@@ -1,8 +1,12 @@
 import React, { useState } from 'react';
 
-export function RegisterKeyModal({ keyData, tokens, onClose, onSubmit, loading }) {
+export function RegisterKeyModal({ keyData, tokens, onClose, onSubmit, loading, walletLabel }) {
   const [selectedToken, setSelectedToken] = useState(tokens[0]?.address || '');
   const [depositAmount, setDepositAmount] = useState('0.001');
+  const selectedTokenData = tokens.find((token) => token.address === selectedToken) || tokens[0];
+  const signerLabel = walletLabel?.toLowerCase().includes('external')
+    ? 'Connected wallet'
+    : walletLabel || 'Connected wallet';
 
   const handleSubmit = (e) => {
     e.preventDefault();
@@ -18,6 +22,12 @@ export function RegisterKeyModal({ keyData, tokens, onClose, onSubmit, loading }
         </div>
 
         <form onSubmit={handleSubmit}>
+          <div className="info-box info-box-subtle">
+            <p><strong>Register this viewer key</strong></p>
+            <p>The public key is written on-chain for the selected token. The spending wallet only signs the transaction.</p>
+            <p>Active signer: {signerLabel}</p>
+          </div>
+
           <div className="form-group">
             <label>Selected Key</label>
             <div className="key-preview">
@@ -41,6 +51,9 @@ export function RegisterKeyModal({ keyData, tokens, onClose, onSubmit, loading }
                 </option>
               ))}
             </select>
+            <small className="hint">
+              {selectedTokenData ? `You are registering for ${selectedTokenData.symbol}.` : 'Choose the token that will use this viewer key.'}
+            </small>
           </div>
 
           <div className="form-group">
@@ -58,13 +71,13 @@ export function RegisterKeyModal({ keyData, tokens, onClose, onSubmit, loading }
             </small>
           </div>
 
-          <div className="info-box">
+          <div className="info-box info-box-subtle">
             <p><strong>What happens next?</strong></p>
             <ol>
-              <li>We'll encrypt the registration transaction using BITE</li>
-              <li>MetaMask will prompt you to sign the encrypted transaction</li>
-              <li>Once confirmed, your public key will be registered on-chain</li>
-              <li>You can then view confidential balances with Face/Touch ID</li>
+              <li>The transaction is encrypted with BITE before signing.</li>
+              <li>Your selected spending wallet signs it.</li>
+              <li>The key becomes available for confidential balance viewing after confirmation.</li>
+              <li>You can unlock later without re-registering unless you rotate the key.</li>
             </ol>
           </div>
 
@@ -77,7 +90,7 @@ export function RegisterKeyModal({ keyData, tokens, onClose, onSubmit, loading }
               className="btn-primary"
               disabled={loading || !selectedToken}
             >
-              {loading ? 'Preparing...' : 'Register via MetaMask'}
+              {loading ? 'Preparing...' : 'Register Viewer Key'}
             </button>
           </div>
         </form>

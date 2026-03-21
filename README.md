@@ -1,4 +1,4 @@
-# BITE Confidential Wallet
+# MyBITE Wallet
 
 A browser extension for managing viewer keys and viewing confidential token balances on SKALE's BITE protocol. Uses WebAuthn/Passkeys for secure biometric authentication (Face ID, Touch ID, PIN).
 

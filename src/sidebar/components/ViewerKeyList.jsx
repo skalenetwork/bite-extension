@@ -17,7 +17,8 @@ export function ViewerKeyList({ keys, selectedKey, onSelect, onDelete, formatPub
     return (
       <div className="empty-state">
         <p>No viewer keys yet.</p>
-        <p className="hint">Create a key to start viewing confidential balances with Face/Touch ID.</p>
+        <p className="hint">Create a viewer key to decrypt confidential balances. It stays separate from your spending wallet.</p>
+        <p className="hint">Use the button above to add one, then register it on-chain before you try to unlock a balance.</p>
       </div>
     );
   }
@@ -40,6 +41,10 @@ export function ViewerKeyList({ keys, selectedKey, onSelect, onDelete, formatPub
                   {new Date(key.createdAt).toLocaleDateString()}
                 </span>
               </div>
+              <div className="key-badges">
+                <span className="key-badge">{key.wrapMethod === 'webauthn-prf' ? 'Passkey PRF' : 'Passphrase wrapped'}</span>
+                <span className="key-badge key-badge-muted">{key.migrationState === 'complete' ? 'Ready' : 'Migration needed'}</span>
+              </div>
               <div className="key-details">
                 <div className="key-row">
                   <span className="key-name">Public Key:</span>
@@ -48,7 +53,7 @@ export function ViewerKeyList({ keys, selectedKey, onSelect, onDelete, formatPub
                       {formatPublicKey(key.publicKeyHex)}
                     </code>
                     <button 
-                      className="btn-copy"
+                      className="btn-copy btn-sm"
                       onClick={(e) => {
                         e.stopPropagation();
                         handleCopy(key.publicKeyHex, `pubkey-${key.id}`);
@@ -66,7 +71,7 @@ export function ViewerKeyList({ keys, selectedKey, onSelect, onDelete, formatPub
                       {address}
                     </code>
                     <button 
-                      className="btn-copy"
+                      className="btn-copy btn-sm"
                       onClick={(e) => {
                         e.stopPropagation();
                         handleCopy(address, `address-${key.id}`);
@@ -77,10 +82,16 @@ export function ViewerKeyList({ keys, selectedKey, onSelect, onDelete, formatPub
                     </button>
                   </div>
                 </div>
+                <div className="key-row">
+                  <span className="key-name">Protection:</span>
+                  <span className="key-value">
+                    {key.wrapMethod === 'webauthn-prf' ? 'Passkey unlock' : 'Passphrase fallback'}
+                  </span>
+                </div>
               </div>
             </div>
             <button
-              className="btn-delete"
+              className="btn-delete btn-icon"
               onClick={(e) => {
                 e.stopPropagation();
                 onDelete(key.id);

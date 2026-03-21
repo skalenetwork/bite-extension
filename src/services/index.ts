@@ -1,5 +1,11 @@
 export { CryptoService } from './crypto';
 export { PasskeyService } from './passkey';
+export { SecureVaultService } from './secureVault';
+export { viewerKeyService, ViewerKeyService } from './viewerKey';
+export { walletService, WalletService } from './wallet';
+export { createSignerAdapter } from './signer';
 export { BiteService, CONFIDENTIAL_TOKENS, BITE_SANDBOX_CONFIG } from './bite';
 export { RegistrationService, registrationService } from './registration';
 export { BalanceService, balanceService } from './balance';
+export { injectedWalletService, InjectedWalletService } from './injectedWallet';
+export { transactionService, TransactionService } from './transaction';

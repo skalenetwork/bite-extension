@@ -67,17 +67,8 @@ export class BiteService {
       data: data,
     };
 
-    console.log('[BiteService] Encrypting transaction:', tx);
     const encryptedTx = await this.bite.encryptTransaction(tx);
-    console.log('[BiteService] Encrypted result:', {
-      to: encryptedTx.to,
-      dataLength: encryptedTx.data?.length,
-      dataPreview: encryptedTx.data?.slice(0, 50) + '...',
-      gasLimit: encryptedTx.gasLimit,
-    });
 
-    // Use the encrypted data exactly as returned by BITE SDK
-    // It should already be a valid hex string starting with 0x
     return {
       to: encryptedTx.to,
       data: encryptedTx.data,

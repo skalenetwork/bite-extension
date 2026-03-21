@@ -6,11 +6,13 @@ export function BalanceCard({
   balance, 
   loading, 
   onViewBalance,
-  onHolderAddressChange
+  onHolderAddressChange,
+  isRegistered
 }) {
   const hasBalance = balance !== undefined;
   const isSessionActive = hasBalance && balance.decryptedAt;
   const [holderAddress, setHolderAddress] = useState('');
+  const statusText = isRegistered ? 'Registered on-chain' : 'Not registered yet';
 
   // Load saved holder address for this token
   useEffect(() => {
@@ -47,11 +49,14 @@ export function BalanceCard({
           type="text"
           value={holderAddress}
           onChange={handleAddressChange}
-          placeholder="Token holder address (0x...)"
+          placeholder="Holder address to decrypt"
           className="holder-address-input"
         />
         <small className="holder-hint">
-          Address that holds {token.symbol}
+          Enter the address that holds {token.symbol}. This is the account whose encrypted balance you want to view.
+        </small>
+        <small className="holder-hint">
+          {statusText}
         </small>
       </div>
 
@@ -89,9 +94,12 @@ export function BalanceCard({
       </div>
 
       {isSessionActive && (
-        <small className="session-info">
-          Decrypted {new Date(balance.decryptedAt).toLocaleTimeString()}
-        </small>
+        <div className="session-info">
+          <span className="session-pill">Unlocked</span>
+          <small>
+            Last decrypted {new Date(balance.decryptedAt).toLocaleTimeString()}. Use Lock Now in the footer to clear it.
+          </small>
+        </div>
       )}
     </div>
   );
