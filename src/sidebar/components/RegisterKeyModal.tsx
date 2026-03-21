@@ -1,24 +1,41 @@
-import React, { useState } from 'react';
+import { useState, type FormEvent } from 'react';
+import type { StoredViewerKey, TokenConfig } from '../../types';
 
-export function RegisterKeyModal({ keyData, tokens, onClose, onSubmit, loading, walletLabel }) {
-  const [selectedToken, setSelectedToken] = useState(tokens[0]?.address || '');
+interface RegisterKeyModalProps {
+  keyData: StoredViewerKey;
+  tokens: TokenConfig[];
+  onClose: () => void;
+  onSubmit: (keyId: string, tokenAddress: string, depositAmount: string) => void;
+  loading: boolean;
+  walletLabel: string | null;
+}
+
+export function RegisterKeyModal({
+  keyData,
+  tokens,
+  onClose,
+  onSubmit,
+  loading,
+  walletLabel,
+}: RegisterKeyModalProps): React.ReactElement {
+  const [selectedToken, setSelectedToken] = useState(tokens[0]?.address ?? '');
   const [depositAmount, setDepositAmount] = useState('0.001');
-  const selectedTokenData = tokens.find((token) => token.address === selectedToken) || tokens[0];
+  const selectedTokenData = tokens.find((token) => token.address === selectedToken) ?? tokens[0];
   const signerLabel = walletLabel?.toLowerCase().includes('external')
     ? 'Connected wallet'
-    : walletLabel || 'Connected wallet';
+    : walletLabel ?? 'Connected wallet';
 
-  const handleSubmit = (e) => {
-    e.preventDefault();
+  const handleSubmit = (event: FormEvent<HTMLFormElement>): void => {
+    event.preventDefault();
     onSubmit(keyData.id, selectedToken, depositAmount);
   };
 
   return (
     <div className="modal-overlay" onClick={onClose}>
-      <div className="modal-content modal-large" onClick={(e) => e.stopPropagation()}>
+      <div className="modal-content modal-large" onClick={(event) => event.stopPropagation()}>
         <div className="modal-header">
           <h3>Register Viewer Key</h3>
-          <button className="modal-close" onClick={onClose}>×</button>
+          <button className="modal-close" onClick={onClose} type="button">×</button>
         </div>
 
         <form onSubmit={handleSubmit}>
@@ -43,7 +60,7 @@ export function RegisterKeyModal({ keyData, tokens, onClose, onSubmit, loading, 
             <select
               id="token-select"
               value={selectedToken}
-              onChange={(e) => setSelectedToken(e.target.value)}
+              onChange={(event) => setSelectedToken(event.target.value)}
             >
               {tokens.map((token) => (
                 <option key={token.address} value={token.address}>
@@ -64,7 +81,7 @@ export function RegisterKeyModal({ keyData, tokens, onClose, onSubmit, loading, 
               step="0.001"
               min="0"
               value={depositAmount}
-              onChange={(e) => setDepositAmount(e.target.value)}
+              onChange={(event) => setDepositAmount(event.target.value)}
             />
             <small className="hint">
               Deposit covers callback execution costs for confidential operations. Unused deposits can be withdrawn later.
@@ -85,8 +102,8 @@ export function RegisterKeyModal({ keyData, tokens, onClose, onSubmit, loading, 
             <button type="button" className="btn-secondary" onClick={onClose}>
               Cancel
             </button>
-            <button 
-              type="submit" 
+            <button
+              type="submit"
               className="btn-primary"
               disabled={loading || !selectedToken}
             >

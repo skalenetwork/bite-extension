@@ -1,27 +1,39 @@
-import React, { useEffect, useRef, useState } from 'react';
+import { useEffect, useRef } from 'react';
+
+interface SettingsDropdownProps {
+  onLock: () => void;
+  onExportWallet?: (() => void) | null;
+  onChangePassword?: (() => void) | null;
+  onClearData: () => void;
+  hasSelfCustodyWallet: boolean;
+  isOpen: boolean;
+  onToggle: (value: boolean) => void;
+}
 
 export function SettingsDropdown({
   onLock,
-  onViewRecoveryPhrase,
+  onExportWallet,
   onChangePassword,
   onClearData,
   hasSelfCustodyWallet,
   isOpen,
   onToggle,
-}) {
-  const dropdownRef = useRef(null);
+}: SettingsDropdownProps): React.ReactElement {
+  const dropdownRef = useRef<HTMLDivElement | null>(null);
 
   useEffect(() => {
-    function handleClickOutside(event) {
-      if (dropdownRef.current && !dropdownRef.current.contains(event.target)) {
+    const handleClickOutside = (event: MouseEvent): void => {
+      const target = event.target;
+      if (!(target instanceof Node)) return;
+      if (dropdownRef.current && !dropdownRef.current.contains(target)) {
         onToggle(false);
       }
-    }
+    };
 
-    if (isOpen) {
-      document.addEventListener('mousedown', handleClickOutside);
-      return () => document.removeEventListener('mousedown', handleClickOutside);
-    }
+    if (!isOpen) return;
+
+    document.addEventListener('mousedown', handleClickOutside);
+    return () => document.removeEventListener('mousedown', handleClickOutside);
   }, [isOpen, onToggle]);
 
   return (
@@ -32,6 +44,7 @@ export function SettingsDropdown({
         title="Settings"
         aria-label="Open settings menu"
         aria-expanded={isOpen}
+        type="button"
       >
         <svg
           width="20"
@@ -48,7 +61,7 @@ export function SettingsDropdown({
         </svg>
       </button>
 
-      {isOpen && (
+      {isOpen ? (
         <div className="settings-dropdown">
           <div className="settings-section">
             <span className="settings-section-label">Security</span>
@@ -58,6 +71,7 @@ export function SettingsDropdown({
                 onLock();
                 onToggle(false);
               }}
+              type="button"
             >
               <span className="settings-icon">
                 <svg
@@ -77,13 +91,14 @@ export function SettingsDropdown({
               <span className="settings-label">Lock Now</span>
             </button>
 
-            {hasSelfCustodyWallet && onViewRecoveryPhrase && (
+            {hasSelfCustodyWallet && onExportWallet ? (
               <button
                 className="settings-item"
                 onClick={() => {
-                  onViewRecoveryPhrase();
+                  onExportWallet();
                   onToggle(false);
                 }}
+                type="button"
               >
                 <span className="settings-icon">
                   <svg
@@ -103,17 +118,18 @@ export function SettingsDropdown({
                     <polyline points="10,9 9,9 8,9" />
                   </svg>
                 </span>
-                <span className="settings-label">View Recovery Phrase</span>
+                <span className="settings-label">Export Wallet Key</span>
               </button>
-            )}
+            ) : null}
 
-            {onChangePassword && (
+            {onChangePassword ? (
               <button
                 className="settings-item"
                 onClick={() => {
                   onChangePassword();
                   onToggle(false);
                 }}
+                type="button"
               >
                 <span className="settings-icon">
                   <svg
@@ -131,7 +147,7 @@ export function SettingsDropdown({
                 </span>
                 <span className="settings-label">Change Password</span>
               </button>
-            )}
+            ) : null}
           </div>
 
           <div className="settings-divider" />
@@ -146,6 +162,7 @@ export function SettingsDropdown({
                   onToggle(false);
                 }
               }}
+              type="button"
             >
               <span className="settings-icon">
                 <svg
@@ -166,7 +183,7 @@ export function SettingsDropdown({
             </button>
           </div>
         </div>
-      )}
+      ) : null}
     </div>
   );
 }

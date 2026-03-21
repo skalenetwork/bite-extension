@@ -16,6 +16,10 @@ function log(...args: unknown[]): void {
   }
 }
 
+function bytesToHex(bytes: Uint8Array): `0x${string}` {
+  return `0x${Array.from(bytes, (value) => value.toString(16).padStart(2, '0')).join('')}`;
+}
+
 export class PasskeyService {
   private static popupWindow: Window | null = null;
   private static activeRequest: { token: symbol; operation: string } | null = null;
@@ -68,7 +72,7 @@ export class PasskeyService {
     return this.withRequestLock('create-direct', async () => {
       log('Creating passkey DIRECTLY from user gesture...');
 
-      const publicKey: PublicKeyCredentialCreationOptions = {
+      const creationOptions: PublicKeyCredentialCreationOptions = {
         challenge: crypto.getRandomValues(new Uint8Array(32)),
         rp: { name: 'MyBITE Wallet' },
         user: {
@@ -87,17 +91,22 @@ export class PasskeyService {
         attestation: 'none',
       };
 
-      const credential = await navigator.credentials.create({ publicKey });
+      const credential = await navigator.credentials.create({ publicKey: creationOptions });
       if (!credential) {
         throw new Error('No passkey credential was created.');
       }
 
       const pkCred = credential as PublicKeyCredential;
+      const response = pkCred.response as AuthenticatorAttestationResponse | undefined;
+      const publicKey = response && typeof response.getPublicKey === 'function'
+        ? response.getPublicKey()
+        : null;
       log('Direct credential created:', { id: pkCred.id.slice(0, 20) + '...' });
 
       return {
         credentialId: pkCred.id,
         prfSupported: true,
+        publicKeyHex: publicKey ? bytesToHex(new Uint8Array(publicKey)) : undefined,
       };
     });
   }

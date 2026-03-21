@@ -2,23 +2,25 @@ import { HDNodeWallet, Wallet } from 'ethers';
 import type {
   CreateWalletOptions,
   CreatedWalletResult,
+  ExternalWalletAccount,
   ImportWalletOptions,
+  SelfCustodyWalletAccount,
   StoredWalletAccount,
-  WalletMode,
-  WrappedSecret,
   WalletNetworkInfo,
+  WrappedSecret,
 } from '../types';
-import { PasskeyService } from './passkey';
 import { viewerKeyStorage } from '../storage/viewerKeys';
 import { runtimeSession } from './runtimeSession';
 import { SecureVaultService } from './secureVault';
 import { injectedWalletService } from './injectedWallet';
+import { PasskeyService } from './passkey';
+import { smartAccountService } from './smartAccount';
 
-function toWrappedSecret(account: StoredWalletAccount): WrappedSecret {
+function toWrappedSecret(account: SelfCustodyWalletAccount): WrappedSecret {
   return {
-    ciphertextHex: account.wrappedSecret || '',
-    saltHex: account.wrapSalt || '',
-    ivHex: account.wrapIv || '',
+    ciphertextHex: account.wrappedSecret,
+    saltHex: account.wrapSalt,
+    ivHex: account.wrapIv,
   };
 }
 
@@ -34,79 +36,23 @@ function normalizeImportedSecret(secret: string): { privateKey: string; mnemonic
   return { privateKey: wallet.privateKey };
 }
 
+function isSelfCustodyWallet(account: StoredWalletAccount): account is SelfCustodyWalletAccount {
+  return account.mode === 'self-custody';
+}
+
 export class WalletService {
   async createLocalWallet(options: CreateWalletOptions = {}): Promise<CreatedWalletResult> {
-    const credential = await PasskeyService.createCredential(options.label || 'MyBITE Wallet');
-    const wrapMethod = credential.prfSupported ? 'webauthn-prf' : 'passphrase';
-    if (wrapMethod === 'passphrase' && !options.passphrase) {
-      throw new Error('Set a wallet passphrase because this authenticator does not support secure PRF wrapping.');
-    }
-
-    const wallet = Wallet.createRandom();
-    const wrapped = credential.prfSupported
-      ? await this.wrapWithPrf(credential.credentialId, wallet.privateKey)
-      : await SecureVaultService.wrapWithPassphrase(wallet.privateKey, options.passphrase!);
-
-    const account: StoredWalletAccount = {
-      id: crypto.randomUUID(),
-      mode: 'self-custody',
-      address: wallet.address,
-      wrappedSecret: wrapped.ciphertextHex,
-      wrapMethod,
-      wrapSalt: wrapped.saltHex,
-      wrapIv: wrapped.ivHex,
-      credentialId: credential.credentialId,
-      createdAt: Date.now(),
-    };
-
-    await viewerKeyStorage.saveWalletAccount(account);
-    runtimeSession.set(`wallet:${account.id}`, wallet.privateKey);
-    return {
-      account,
-      recoveryPhrase: wallet.mnemonic?.phrase || null,
-      privateKey: wallet.privateKey,
-    };
+    const result = await smartAccountService.createWallet(options);
+    await viewerKeyStorage.saveWalletAccount(result.account);
+    runtimeSession.set(`wallet:${result.account.id}`, 'ready');
+    return result;
   }
 
   async createLocalWalletDirect(label?: string): Promise<CreatedWalletResult> {
-    // Step 1: Create passkey - MUST be called immediately from click handler
-    const credential = await PasskeyService.createCredentialDirect(label || 'MyBITE Wallet');
-    
-    // Step 2: Now wrap with PRF - this will prompt for authentication again
-    const wallet = Wallet.createRandom();
-    const wrapped = await this.wrapWithPrfDirect(credential.credentialId, wallet.privateKey);
-
-    const account: StoredWalletAccount = {
-      id: crypto.randomUUID(),
-      mode: 'self-custody',
-      address: wallet.address,
-      wrappedSecret: wrapped.ciphertextHex,
-      wrapMethod: 'webauthn-prf',
-      wrapSalt: wrapped.saltHex,
-      wrapIv: wrapped.ivHex,
-      credentialId: credential.credentialId,
-      createdAt: Date.now(),
-    };
-
-    await viewerKeyStorage.saveWalletAccount(account);
-    runtimeSession.set(`wallet:${account.id}`, wallet.privateKey);
-    return {
-      account,
-      recoveryPhrase: wallet.mnemonic?.phrase || null,
-      privateKey: wallet.privateKey,
-    };
+    return this.createLocalWallet({ label });
   }
 
-  private async wrapWithPrfDirect(credentialId: string, secretHex: string): Promise<WrappedSecret> {
-    const prfOutput = await PasskeyService.getPrfSecretDirect(credentialId, `wallet-wrap:${credentialId}`);
-    if (!prfOutput) {
-      throw new Error('Passkey PRF is not available for this wallet credential.');
-    }
-
-    return SecureVaultService.wrapWithPrf(secretHex, prfOutput);
-  }
-
-  async importLocalWallet(options: ImportWalletOptions): Promise<StoredWalletAccount> {
+  async importLocalWallet(options: ImportWalletOptions): Promise<SelfCustodyWalletAccount> {
     const credential = await PasskeyService.createCredential('Imported MyBITE Wallet');
     const wrapMethod = credential.prfSupported ? 'webauthn-prf' : 'passphrase';
     if (wrapMethod === 'passphrase' && !options.passphrase) {
@@ -119,7 +65,7 @@ export class WalletService {
       ? await this.wrapWithPrf(credential.credentialId, wallet.privateKey)
       : await SecureVaultService.wrapWithPassphrase(wallet.privateKey, options.passphrase!);
 
-    const account: StoredWalletAccount = {
+    const account: SelfCustodyWalletAccount = {
       id: crypto.randomUUID(),
       mode: 'self-custody',
       address: wallet.address,
@@ -128,6 +74,7 @@ export class WalletService {
       wrapSalt: wrapped.saltHex,
       wrapIv: wrapped.ivHex,
       credentialId: credential.credentialId,
+      providerRef: 'local',
       createdAt: Date.now(),
       backupConfirmedAt: Date.now(),
     };
@@ -137,8 +84,8 @@ export class WalletService {
     return account;
   }
 
-  async saveProviderWallet(mode: WalletMode, address: string, providerRef: string): Promise<StoredWalletAccount> {
-    const account: StoredWalletAccount = {
+  async saveProviderWallet(mode: 'external', address: string, providerRef: string): Promise<ExternalWalletAccount> {
+    const account: ExternalWalletAccount = {
       id: crypto.randomUUID(),
       mode,
       address,
@@ -158,7 +105,17 @@ export class WalletService {
     }
 
     const account = await viewerKeyStorage.getWalletAccount(accountId);
-    if (!account || account.mode !== 'self-custody' || !account.wrappedSecret || !account.wrapMethod) {
+    if (!account) {
+      throw new Error('Wallet account not found.');
+    }
+
+    if (account.mode === 'smart-account') {
+      await smartAccountService.authenticate(account);
+      runtimeSession.set(`wallet:${account.id}`, account.address);
+      return account.address;
+    }
+
+    if (!isSelfCustodyWallet(account)) {
       throw new Error('This wallet account cannot be unlocked locally.');
     }
 
@@ -203,6 +160,15 @@ export class WalletService {
   }
 
   async exportWalletSecret(accountId: string, passphrase: string): Promise<string> {
+    const account = await viewerKeyStorage.getWalletAccount(accountId);
+    if (!account) {
+      throw new Error('Wallet account not found.');
+    }
+
+    if (!isSelfCustodyWallet(account)) {
+      throw new Error('This wallet does not have an exportable private key in MyBITE.');
+    }
+
     return this.unlockWalletAccount(accountId, passphrase);
   }
 
@@ -211,7 +177,7 @@ export class WalletService {
   }
 
   async connectExternalWallet(): Promise<{
-    account: StoredWalletAccount;
+    account: ExternalWalletAccount;
     networkInfo: WalletNetworkInfo;
     balance: string | null;
   }> {
@@ -228,30 +194,25 @@ export class WalletService {
     const address = result.accounts[0];
     const chainId = result.chainId || '0x1';
 
-    // Check if we already have this wallet stored
     const existingAccounts = await viewerKeyStorage.getWalletAccounts();
     const existingAccount = existingAccounts.find(
-      (acc) => acc.mode === 'external' && acc.address.toLowerCase() === address.toLowerCase()
+      (account): account is ExternalWalletAccount =>
+        account.mode === 'external' && account.address.toLowerCase() === address.toLowerCase(),
     );
 
-    let account: StoredWalletAccount;
+    let account: ExternalWalletAccount;
 
     if (existingAccount) {
-      // Update the existing account
       account = {
         ...existingAccount,
         providerRef: 'injected',
       };
       await viewerKeyStorage.saveWalletAccount(account);
     } else {
-      // Create new external wallet account
       account = await this.saveProviderWallet('external', address, 'injected');
     }
 
-    // Save connection info for persistence
     await injectedWalletService.saveConnectedWallet(address, chainId);
-
-    // Get balance
     const balance = await injectedWalletService.getBalance(address);
 
     return {
@@ -268,17 +229,12 @@ export class WalletService {
     }
 
     if (account.mode !== 'external') {
-      throw new Error('Cannot disconnect a self-custody wallet');
+      throw new Error('Cannot disconnect a local wallet');
     }
 
-    // Remove the account from storage
     await viewerKeyStorage.deleteWalletAccount(accountId);
-
-    // Clear saved connection info
     injectedWalletService.clearSavedWallet();
     injectedWalletService.disconnect();
-
-    // Clear any runtime session data
     this.lockWalletAccount(accountId);
   }
 
@@ -296,22 +252,21 @@ export class WalletService {
 
     const connectedAccounts = await injectedWalletService.getConnectedAccounts();
     return connectedAccounts.some(
-      (addr) => addr.toLowerCase() === savedInfo.address.toLowerCase()
+      (address) => address.toLowerCase() === savedInfo.address.toLowerCase(),
     );
   }
 
   async reconnectSavedWallet(): Promise<{
-    account: StoredWalletAccount;
+    account: ExternalWalletAccount;
     networkInfo: WalletNetworkInfo;
     balance: string | null;
   } | null> {
     const savedInfo = injectedWalletService.getSavedWalletInfo();
     if (!savedInfo) return null;
 
-    // Check if wallet is still connected
     const connectedAccounts = await injectedWalletService.getConnectedAccounts();
     const isStillConnected = connectedAccounts.some(
-      (addr) => addr.toLowerCase() === savedInfo.address.toLowerCase()
+      (address) => address.toLowerCase() === savedInfo.address.toLowerCase(),
     );
 
     if (!isStillConnected) {
@@ -319,13 +274,12 @@ export class WalletService {
       return null;
     }
 
-    // Reconnect
     return this.connectExternalWallet();
   }
 
   setupExternalWalletEventListeners(
     onAccountsChanged: (event: { accounts: string[]; chainId: string; isConnected: boolean }) => void,
-    onChainChanged: (chainId: string) => void
+    onChainChanged: (chainId: string) => void,
   ): () => void {
     const unsubscribeAccounts = injectedWalletService.onAccountsChanged((event) => {
       onAccountsChanged(event);
@@ -335,7 +289,6 @@ export class WalletService {
       onChainChanged(chainId);
     });
 
-    // Return cleanup function
     return () => {
       unsubscribeAccounts();
       unsubscribeChain();

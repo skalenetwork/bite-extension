@@ -94,6 +94,24 @@ try {
     postMessage('WEBAUTHN_ERROR', { error, details });
   }
 
+  function bytesToHex(bytes) {
+    return `0x${Array.from(bytes, (byte) => byte.toString(16).padStart(2, '0')).join('')}`;
+  }
+
+  function getCredentialPublicKeyHex(credential) {
+    const response = credential && credential.response;
+    if (!response || typeof response.getPublicKey !== 'function') {
+      return null;
+    }
+
+    const publicKey = response.getPublicKey();
+    if (!publicKey) {
+      return null;
+    }
+
+    return bytesToHex(new Uint8Array(publicKey));
+  }
+
   function base64UrlToBuffer(base64url) {
     const base64 = base64url.replace(/-/g, '+').replace(/_/g, '/');
     const padded = base64.padEnd(Math.ceil(base64.length / 4) * 4, '=');
@@ -210,6 +228,7 @@ try {
     }
 
     log('Credential created:', { id: credential.id.slice(0, 20) + '...', type: credential.type });
+    const publicKeyHex = getCredentialPublicKeyHex(credential);
     
     let prfSupported = false;
 
@@ -227,6 +246,7 @@ try {
     postMessage('WEBAUTHN_CREATE_SUCCESS', {
       credentialId: credential.id,
       prfSupported,
+      publicKeyHex,
     });
     window.setTimeout(() => window.close(), 1200);
   }

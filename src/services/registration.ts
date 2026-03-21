@@ -1,4 +1,4 @@
-import { BiteService, CONFIDENTIAL_TOKENS } from './bite';
+import { BiteService, BITE_SANDBOX_CONFIG, CONFIDENTIAL_TOKENS } from './bite';
 import { ethers } from 'ethers';
 import type { RegistrationPayload } from '../types';
 
@@ -134,8 +134,7 @@ export class RegistrationService {
    * Get the explorer URL for a transaction
    */
   getExplorerUrl(txHash: string): string {
-    const { explorerUrl } = require('./bite').BITE_SANDBOX_CONFIG;
-    return `${explorerUrl}/tx/${txHash}`;
+    return `${BITE_SANDBOX_CONFIG.explorerUrl}/tx/${txHash}`;
   }
 }
 

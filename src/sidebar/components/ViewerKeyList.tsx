@@ -1,15 +1,32 @@
-import React, { useState } from 'react';
+import { useState } from 'react';
+import type { StoredViewerKey } from '../../types';
 
-export function ViewerKeyList({ keys, selectedKey, onSelect, onDelete, formatPublicKey, formatAddress }) {
-  const [copiedField, setCopiedField] = useState(null);
+interface ViewerKeyListProps {
+  keys: StoredViewerKey[];
+  selectedKey: StoredViewerKey | null;
+  onSelect: (key: StoredViewerKey) => void;
+  onDelete: (keyId: string) => void;
+  formatPublicKey: (value: string) => string;
+  formatAddress: (value: string) => string;
+}
 
-  const handleCopy = async (text, field) => {
+export function ViewerKeyList({
+  keys,
+  selectedKey,
+  onSelect,
+  onDelete,
+  formatPublicKey,
+  formatAddress,
+}: ViewerKeyListProps): React.ReactElement {
+  const [copiedField, setCopiedField] = useState<string | null>(null);
+
+  const handleCopy = async (text: string, field: string): Promise<void> => {
     try {
       await navigator.clipboard.writeText(text);
       setCopiedField(field);
-      setTimeout(() => setCopiedField(null), 2000);
-    } catch (err) {
-      console.error('Failed to copy:', err);
+      window.setTimeout(() => setCopiedField(null), 2000);
+    } catch (error) {
+      console.error('Failed to copy:', error);
     }
   };
 
@@ -27,7 +44,7 @@ export function ViewerKeyList({ keys, selectedKey, onSelect, onDelete, formatPub
     <div className="keys-list">
       {keys.map((key) => {
         const address = formatAddress(key.publicKeyHex);
-        
+
         return (
           <div
             key={key.id}
@@ -37,9 +54,7 @@ export function ViewerKeyList({ keys, selectedKey, onSelect, onDelete, formatPub
             <div className="key-info">
               <div className="key-header">
                 <span className="key-label">{key.label}</span>
-                <span className="key-date">
-                  {new Date(key.createdAt).toLocaleDateString()}
-                </span>
+                <span className="key-date">{new Date(key.createdAt).toLocaleDateString()}</span>
               </div>
               <div className="key-badges">
                 <span className="key-badge">{key.wrapMethod === 'webauthn-prf' ? 'Passkey PRF' : 'Passphrase wrapped'}</span>
@@ -49,16 +64,15 @@ export function ViewerKeyList({ keys, selectedKey, onSelect, onDelete, formatPub
                 <div className="key-row">
                   <span className="key-name">Public Key:</span>
                   <div className="key-value-container">
-                    <code className="key-value" title={key.publicKeyHex}>
-                      {formatPublicKey(key.publicKeyHex)}
-                    </code>
-                    <button 
+                    <code className="key-value" title={key.publicKeyHex}>{formatPublicKey(key.publicKeyHex)}</code>
+                    <button
                       className="btn-copy btn-sm"
-                      onClick={(e) => {
-                        e.stopPropagation();
-                        handleCopy(key.publicKeyHex, `pubkey-${key.id}`);
+                      onClick={(event) => {
+                        event.stopPropagation();
+                        void handleCopy(key.publicKeyHex, `pubkey-${key.id}`);
                       }}
                       title="Copy public key"
+                      type="button"
                     >
                       {copiedField === `pubkey-${key.id}` ? '✓' : '📋'}
                     </button>
@@ -67,36 +81,30 @@ export function ViewerKeyList({ keys, selectedKey, onSelect, onDelete, formatPub
                 <div className="key-row">
                   <span className="key-name">Address:</span>
                   <div className="key-value-container">
-                    <code className="key-value address-value" title={address}>
-                      {address}
-                    </code>
-                    <button 
+                    <code className="key-value address-value" title={address}>{address}</code>
+                    <button
                       className="btn-copy btn-sm"
-                      onClick={(e) => {
-                        e.stopPropagation();
-                        handleCopy(address, `address-${key.id}`);
+                      onClick={(event) => {
+                        event.stopPropagation();
+                        void handleCopy(address, `address-${key.id}`);
                       }}
                       title="Copy address"
+                      type="button"
                     >
                       {copiedField === `address-${key.id}` ? '✓' : '📋'}
                     </button>
                   </div>
                 </div>
-                <div className="key-row">
-                  <span className="key-name">Protection:</span>
-                  <span className="key-value">
-                    {key.wrapMethod === 'webauthn-prf' ? 'Passkey unlock' : 'Passphrase fallback'}
-                  </span>
-                </div>
               </div>
             </div>
             <button
               className="btn-delete btn-icon"
-              onClick={(e) => {
-                e.stopPropagation();
+              onClick={(event) => {
+                event.stopPropagation();
                 onDelete(key.id);
               }}
               title="Delete key"
+              type="button"
             >
               ×
             </button>

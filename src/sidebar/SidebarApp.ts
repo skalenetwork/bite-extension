@@ -1,7 +1,5 @@
 import './styles.css'
-import iconUrl from '../images/icon.png'
-
-const javascriptLogo = iconUrl
+const javascriptLogo = new URL('../images/icon.png', import.meta.url).href
 
 function SidebarApp() {
   const root = document.getElementById('root')

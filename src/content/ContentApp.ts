@@ -1,5 +1,4 @@
-import iconUrl from '../images/icon.png'
-const logo = iconUrl
+const logo = new URL('../images/icon.png', import.meta.url).href
 
 export default function createContentApp() {
   const container = document.createElement('div')

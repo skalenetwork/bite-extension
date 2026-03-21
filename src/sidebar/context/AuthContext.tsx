@@ -1,9 +1,8 @@
-import { createContext, useContext, useState, useCallback, useEffect, type ReactNode } from 'react';
-import type { AuthState, UnlockResult, OnboardingState, OnboardingStep, OnboardingPath } from '../../types';
-import { viewerKeyStorage } from '../../storage/viewerKeys';
-import { runtimeSession } from '../../services/runtimeSession';
-import { viewerKeyService } from '../../services/viewerKey';
+import { createContext, useCallback, useContext, useEffect, useState, type ReactNode } from 'react';
+import type { AuthState, OnboardingPath, OnboardingState, OnboardingStep, UnlockResult } from '../../types';
 import { walletService } from '../../services/wallet';
+import { runtimeSession } from '../../services/runtimeSession';
+import { viewerKeyStorage } from '../../storage/viewerKeys';
 
 interface AuthContextValue extends AuthState {
   onboarding: OnboardingState;
@@ -11,7 +10,7 @@ interface AuthContextValue extends AuthState {
   hasPasskeySupport: boolean;
   webAuthnAvailable: boolean;
   authenticateWithPasskey: () => Promise<UnlockResult>;
-  authenticateWithPassphrase: (credentialId: string, passphrase: string) => Promise<UnlockResult>;
+  authenticateWithPassphrase: (passphrase: string) => Promise<UnlockResult>;
   lock: () => void;
   startOnboarding: () => void;
   completeOnboarding: () => Promise<void>;
@@ -55,34 +54,21 @@ export function AuthProvider({ children }: AuthProviderProps): React.ReactElemen
   const [hasPasskeySupport, setHasPasskeySupport] = useState(false);
   const [webAuthnAvailable, setWebAuthnAvailable] = useState(false);
 
-  const checkAuthState = useCallback(async () => {
+  const checkAuthState = useCallback(async (): Promise<void> => {
     try {
       await viewerKeyStorage.init();
       const wallets = await viewerKeyStorage.getWalletAccounts();
-
       const existingWallet = wallets.length > 0;
-      const hasActiveSession = wallets.some((w) => runtimeSession.has(`wallet:${w.id}`));
+      const hasActiveSession = wallets.some((wallet) => runtimeSession.has(`wallet:${wallet.id}`));
 
       setHasExistingWallet(existingWallet);
 
       if (hasActiveSession) {
-        setAuthState({
-          status: 'authenticated',
-          isOnboarding: false,
-          error: null,
-        });
+        setAuthState({ status: 'authenticated', isOnboarding: false, error: null });
       } else if (existingWallet) {
-        setAuthState({
-          status: 'locked',
-          isOnboarding: false,
-          error: null,
-        });
+        setAuthState({ status: 'locked', isOnboarding: false, error: null });
       } else {
-        setAuthState({
-          status: 'unauthenticated',
-          isOnboarding: true,
-          error: null,
-        });
+        setAuthState({ status: 'unauthenticated', isOnboarding: true, error: null });
       }
     } catch (error) {
       setAuthState({
@@ -93,27 +79,23 @@ export function AuthProvider({ children }: AuthProviderProps): React.ReactElemen
     }
   }, []);
 
-  // Check WebAuthn availability
   useEffect(() => {
-    const checkWebAuthn = async () => {
-      // Try multiple times with delay for extension context
-      for (let i = 0; i < 3; i++) {
-        await new Promise(resolve => setTimeout(resolve, 100 * (i + 1)));
-        
+    const detectWebAuthn = async (): Promise<void> => {
+      for (let attempt = 0; attempt < 3; attempt += 1) {
+        await new Promise((resolve) => setTimeout(resolve, 100 * (attempt + 1)));
         if (typeof window !== 'undefined' && typeof window.PublicKeyCredential !== 'undefined') {
           setWebAuthnAvailable(true);
           setHasPasskeySupport(true);
           return;
         }
       }
-      
-      // Final check
-      const isAvailable = typeof window !== 'undefined' && typeof window.PublicKeyCredential !== 'undefined';
-      setWebAuthnAvailable(isAvailable);
-      setHasPasskeySupport(isAvailable);
+
+      const available = typeof window !== 'undefined' && typeof window.PublicKeyCredential !== 'undefined';
+      setWebAuthnAvailable(available);
+      setHasPasskeySupport(available);
     };
 
-    void checkWebAuthn();
+    void detectWebAuthn();
   }, []);
 
   useEffect(() => {
@@ -121,80 +103,48 @@ export function AuthProvider({ children }: AuthProviderProps): React.ReactElemen
   }, [checkAuthState]);
 
   const authenticateWithPasskey = useCallback(async (): Promise<UnlockResult> => {
-    console.log('[AuthContext] authenticateWithPasskey called');
     try {
-      await viewerKeyStorage.init();
       const wallets = await viewerKeyStorage.getWalletAccounts();
-      console.log('[AuthContext] Found wallets:', wallets.length);
-      
-      // Find wallets that use webauthn-prf
-      const prfWallets = wallets.filter(w => w.credentialId && w.wrapMethod === 'webauthn-prf');
-      console.log('[AuthContext] PRF wallets found:', prfWallets.length, prfWallets.map(w => ({ id: w.id, credentialId: w.credentialId?.slice(0, 20) + '...' })));
-      
-      if (prfWallets.length === 0) {
-        console.log('[AuthContext] No PRF wallets found');
-        return { success: false, error: 'No passkey-protected wallets found. Create a wallet with passkey first.' };
+      const passkeyWallets = wallets.filter(
+        (wallet) =>
+          (wallet.mode === 'smart-account' || wallet.mode === 'self-custody') &&
+          'credentialId' in wallet &&
+          Boolean(wallet.credentialId),
+      );
+
+      if (passkeyWallets.length === 0) {
+        return { success: false, error: 'No passkey-protected wallets found.' };
       }
 
-      for (const wallet of prfWallets) {
+      for (const wallet of passkeyWallets) {
         try {
-          console.log('[AuthContext] Attempting to unlock wallet:', wallet.id, 'with credentialId:', wallet.credentialId?.slice(0, 20) + '...');
-          // For webauthn-prf wallets, unlockWalletAccount handles the PRF authentication internally
           await walletService.unlockWalletAccount(wallet.id, '');
-          console.log('[AuthContext] Wallet unlocked successfully:', wallet.id);
-          setAuthState({
-            status: 'authenticated',
-            isOnboarding: false,
-            error: null,
-          });
+          setAuthState({ status: 'authenticated', isOnboarding: false, error: null });
           return { success: true };
-        } catch (err) {
-          console.error(`[AuthContext] Failed to unlock wallet ${wallet.id}:`, err);
-          // Continue to next wallet
+        } catch {
+          // try next wallet
         }
       }
 
-      console.log('[AuthContext] All PRF wallets failed to unlock');
-      return { success: false, error: 'Passkey authentication failed. Please ensure your passkey is available and try again.' };
+      return { success: false, error: 'Passkey authentication failed. Please try again.' };
     } catch (error) {
       const errorMessage = error instanceof Error ? error.message : 'Passkey authentication failed';
-      console.error('[AuthContext] authenticateWithPasskey error:', error);
       setAuthState({ status: 'unauthenticated', isOnboarding: true, error: errorMessage });
       return { success: false, error: errorMessage };
     }
   }, []);
 
-  const authenticateWithPassphrase = useCallback(async (credentialId: string, passphrase: string): Promise<UnlockResult> => {
+  const authenticateWithPassphrase = useCallback(async (passphrase: string): Promise<UnlockResult> => {
     try {
-      await viewerKeyStorage.init();
-
       const wallets = await viewerKeyStorage.getWalletAccounts();
-      const wallet = wallets.find((w) => w.credentialId === credentialId);
-
-      if (wallet) {
-        await walletService.unlockWalletAccount(wallet.id, passphrase);
-        setAuthState({
-          status: 'authenticated',
-          isOnboarding: false,
-          error: null,
-        });
-        return { success: true };
+      const localWallet = wallets.find((wallet) => wallet.mode === 'self-custody' && wallet.wrapMethod === 'passphrase');
+      if (!localWallet) {
+        return { success: false, error: 'No passphrase-protected wallet is available.' };
       }
 
-      const keys = await viewerKeyStorage.getAllKeys();
-      const key = keys.find((k) => k.credentialId === credentialId);
-
-      if (key) {
-        await viewerKeyService.unlockViewerKey(key.id, { passphrase });
-        setAuthState({
-          status: 'authenticated',
-          isOnboarding: false,
-          error: null,
-        });
-        return { success: true };
-      }
-
-      return { success: false, error: 'Invalid credentials' };
+      await walletService.unlockWalletAccount(localWallet.id, passphrase);
+      setAuthState({ status: 'authenticated', isOnboarding: false, error: null });
+      return { success: true };
     } catch (error) {
       const errorMessage = error instanceof Error ? error.message : 'Authentication failed';
       setAuthState({ status: 'unauthenticated', isOnboarding: true, error: errorMessage });
@@ -202,42 +152,34 @@ export function AuthProvider({ children }: AuthProviderProps): React.ReactElemen
     }
   }, []);
 
-  const lock = useCallback(() => {
+  const lock = useCallback((): void => {
     runtimeSession.clearAll();
-    setAuthState({
-      status: 'locked',
-      isOnboarding: false,
-      error: null,
-    });
+    setAuthState({ status: 'locked', isOnboarding: false, error: null });
   }, []);
 
-  const startOnboarding = useCallback(() => {
-    setAuthState({
-      status: 'unauthenticated',
-      isOnboarding: true,
-      error: null,
-    });
+  const startOnboarding = useCallback((): void => {
+    setAuthState({ status: 'unauthenticated', isOnboarding: true, error: null });
     setOnboarding(initialOnboardingState);
   }, []);
 
-  const completeOnboarding = useCallback(async () => {
+  const completeOnboarding = useCallback(async (): Promise<void> => {
     await checkAuthState();
   }, [checkAuthState]);
 
-  const setOnboardingStep = useCallback((step: OnboardingStep) => {
-    setOnboarding((prev) => ({ ...prev, currentStep: step }));
+  const setOnboardingStep = useCallback((step: OnboardingStep): void => {
+    setOnboarding((previous) => ({ ...previous, currentStep: step }));
   }, []);
 
-  const setOnboardingPath = useCallback((path: OnboardingPath) => {
-    setOnboarding((prev) => ({ ...prev, path }));
+  const setOnboardingPath = useCallback((path: OnboardingPath): void => {
+    setOnboarding((previous) => ({ ...previous, path }));
   }, []);
 
-  const setWalletId = useCallback((walletId: string | null) => {
-    setOnboarding((prev) => ({ ...prev, walletId }));
+  const setWalletId = useCallback((walletId: string | null): void => {
+    setOnboarding((previous) => ({ ...previous, walletId }));
   }, []);
 
-  const confirmBackup = useCallback(() => {
-    setOnboarding((prev) => ({ ...prev, backupConfirmed: true }));
+  const confirmBackup = useCallback((): void => {
+    setOnboarding((previous) => ({ ...previous, backupConfirmed: true }));
   }, []);
 
   const value: AuthContextValue = {
@@ -257,9 +199,5 @@ export function AuthProvider({ children }: AuthProviderProps): React.ReactElemen
     confirmBackup,
   };
 
-  return (
-    <AuthContext.Provider value={value}>
-      {children}
-    </AuthContext.Provider>
-  );
+  return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;
 }

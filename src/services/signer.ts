@@ -1,30 +1,39 @@
 import { ethers } from 'ethers';
-import type { StoredWalletAccount } from '../types';
+import type {
+  SelfCustodyWalletAccount,
+  SmartWalletAccount,
+  StoredWalletAccount,
+} from '../types';
 import { CONFIDENTIAL_TOKEN_ABI, BITE_SANDBOX_CONFIG } from './bite';
+import { smartAccountService } from './smartAccount';
 import { walletService } from './wallet';
 
 export interface SignerAdapter {
-  prepareSend(tokenAddress: string, to: string, amount: bigint): Promise<{ to: string; data: string; value?: string }>;
-  sendTransaction(request: { to: string; data: string; value?: string }, options?: { passphrase?: string }): Promise<string>;
+  prepareSend(tokenAddress: string, to: string, amount: bigint): Promise<{ to: string; data: `0x${string}`; value?: string }>;
+  sendTransaction(request: { to: string; data: `0x${string}`; value?: string }, options?: { passphrase?: string }): Promise<string>;
+}
+
+function encodeTransfer(tokenAddress: string, to: string, amount: bigint): { to: string; data: `0x${string}` } {
+  const iface = new ethers.Interface(CONFIDENTIAL_TOKEN_ABI);
+  return {
+    to: tokenAddress,
+    data: iface.encodeFunctionData('transfer', [to, amount]) as `0x${string}`,
+  };
 }
 
 class LocalWrappedSigner implements SignerAdapter {
-  constructor(private readonly account: StoredWalletAccount) {}
+  constructor(private readonly account: SelfCustodyWalletAccount) {}
 
-  async prepareSend(tokenAddress: string, to: string, amount: bigint): Promise<{ to: string; data: string }> {
-    const iface = new ethers.Interface(CONFIDENTIAL_TOKEN_ABI);
-    return {
-      to: tokenAddress,
-      data: iface.encodeFunctionData('transfer', [to, amount]),
-    };
+  async prepareSend(tokenAddress: string, to: string, amount: bigint): Promise<{ to: string; data: `0x${string}` }> {
+    return encodeTransfer(tokenAddress, to, amount);
   }
 
   async sendTransaction(
-    request: { to: string; data: string; value?: string },
+    request: { to: string; data: `0x${string}`; value?: string },
     options?: { passphrase?: string },
   ): Promise<string> {
     if (!options?.passphrase) {
-      throw new Error('Passphrase required to unlock local wallet.');
+      throw new Error('Passphrase required to unlock imported wallet.');
     }
 
     const privateKey = await walletService.unlockWalletAccount(this.account.id, options.passphrase);
@@ -40,20 +49,31 @@ class LocalWrappedSigner implements SignerAdapter {
   }
 }
 
+class SmartAccountSigner implements SignerAdapter {
+  constructor(private readonly account: SmartWalletAccount) {}
+
+  async prepareSend(tokenAddress: string, to: string, amount: bigint): Promise<{ to: string; data: `0x${string}` }> {
+    return encodeTransfer(tokenAddress, to, amount);
+  }
+
+  async sendTransaction(
+    request: { to: string; data: `0x${string}`; value?: string },
+  ): Promise<string> {
+    const txHash = await smartAccountService.sendCall(this.account, request);
+    return txHash;
+  }
+}
+
 class ExternalWalletSigner implements SignerAdapter {
   constructor(private readonly account: StoredWalletAccount) {}
 
-  async prepareSend(tokenAddress: string, to: string, amount: bigint): Promise<{ to: string; data: string }> {
-    const iface = new ethers.Interface(CONFIDENTIAL_TOKEN_ABI);
-    return {
-      to: tokenAddress,
-      data: iface.encodeFunctionData('transfer', [to, amount]),
-    };
+  async prepareSend(tokenAddress: string, to: string, amount: bigint): Promise<{ to: string; data: `0x${string}` }> {
+    return encodeTransfer(tokenAddress, to, amount);
   }
 
-  async sendTransaction(request: { to: string; data: string; value?: string }): Promise<string> {
-    const ethereum = (window as Window & { ethereum?: { request: (args: unknown) => Promise<unknown> } }).ethereum;
-    const accounts = (await ethereum?.request({ method: 'eth_requestAccounts' })) as string[] | undefined;
+  async sendTransaction(request: { to: string; data: `0x${string}`; value?: string }): Promise<string> {
+    const ethereum = window.ethereum;
+    const accounts = await ethereum?.request<string[]>({ method: 'eth_requestAccounts' });
     const activeAddress = accounts?.[0];
 
     if (!activeAddress) {
@@ -64,7 +84,7 @@ class ExternalWalletSigner implements SignerAdapter {
       throw new Error('Injected wallet account changed. Reconnect the wallet in the extension and try again.');
     }
 
-    const txHash = await ethereum?.request({
+    const txHash = await ethereum?.request<string>({
       method: 'eth_sendTransaction',
       params: [
         {
@@ -89,6 +109,10 @@ export function createSignerAdapter(account: StoredWalletAccount | null): Signer
 
   if (account.mode === 'self-custody') {
     return new LocalWrappedSigner(account);
+  }
+
+  if (account.mode === 'smart-account') {
+    return new SmartAccountSigner(account);
   }
 
   return new ExternalWalletSigner(account);

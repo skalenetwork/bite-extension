@@ -1,4 +1,18 @@
-import React, { useEffect, useState } from 'react';
+import { useEffect, useState, type FormEvent } from 'react';
+
+interface SecurePassphraseModalProps {
+  open: boolean;
+  title?: string;
+  description?: string;
+  confirmLabel?: string;
+  cancelLabel?: string;
+  hint?: string;
+  initialValue?: string;
+  requireConfirm?: boolean;
+  loading?: boolean;
+  onClose: () => void;
+  onConfirm: (passphrase: string) => Promise<void>;
+}
 
 export function SecurePassphraseModal({
   open,
@@ -12,10 +26,10 @@ export function SecurePassphraseModal({
   loading = false,
   onClose,
   onConfirm,
-}) {
+}: SecurePassphraseModalProps): React.ReactElement | null {
   const [passphrase, setPassphrase] = useState(initialValue);
   const [confirmation, setConfirmation] = useState('');
-  const [error, setError] = useState(null);
+  const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
     if (!open) {
@@ -23,11 +37,11 @@ export function SecurePassphraseModal({
       setConfirmation('');
       setError(null);
     }
-  }, [open, initialValue]);
+  }, [initialValue, open]);
 
   if (!open) return null;
 
-  const handleSubmit = async (event) => {
+  const handleSubmit = async (event: FormEvent<HTMLFormElement>): Promise<void> => {
     event.preventDefault();
     setError(null);
 
@@ -44,7 +58,7 @@ export function SecurePassphraseModal({
     try {
       await onConfirm(passphrase.trim());
     } catch (submitError) {
-      setError(submitError.message || 'Failed to continue.');
+      setError(submitError instanceof Error ? submitError.message : 'Failed to continue.');
     }
   };
 
@@ -53,10 +67,12 @@ export function SecurePassphraseModal({
       <div className="modal-content" onClick={(event) => event.stopPropagation()}>
         <div className="modal-header">
           <h3>{title}</h3>
-          <button className="modal-close" onClick={onClose}>×</button>
+          <button className="modal-close" onClick={onClose} type="button">
+            ×
+          </button>
         </div>
 
-        <form onSubmit={handleSubmit}>
+        <form onSubmit={(event) => void handleSubmit(event)}>
           <div className="info-box info-box-subtle">
             <p><strong>Secure unlock</strong></p>
             <p>{description}</p>
@@ -75,7 +91,7 @@ export function SecurePassphraseModal({
             <small className="hint">{hint}</small>
           </div>
 
-          {requireConfirm && (
+          {requireConfirm ? (
             <div className="form-group">
               <label htmlFor="secure-passphrase-confirm">Confirm Passphrase</label>
               <input
@@ -87,9 +103,9 @@ export function SecurePassphraseModal({
                 autoComplete="off"
               />
             </div>
-          )}
+          ) : null}
 
-          {error && <div className="error-message"><strong>Error:</strong> {error}</div>}
+          {error ? <div className="error-message"><strong>Error:</strong> {error}</div> : null}
 
           <div className="modal-actions">
             <button type="button" className="btn-secondary" onClick={onClose} disabled={loading}>

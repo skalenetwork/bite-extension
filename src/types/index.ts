@@ -1,6 +1,10 @@
+export type HexString = `0x${string}`;
+
 export type WrapMethod = 'webauthn-prf' | 'passphrase';
 
-export type WalletMode = 'self-custody' | 'embedded' | 'external';
+export type WalletMode = 'smart-account' | 'self-custody' | 'external';
+
+export type SmartWalletProvider = 'coinbase-smart-wallet';
 
 export type AccountKind = 'viewer' | 'spending';
 
@@ -25,7 +29,7 @@ export type OnboardingStep =
   | 'create-wallet'
   | 'import-wallet'
   | 'connect-wallet'
-  | 'backup'
+  | 'add-viewer-key'
   | 'complete';
 
 export type OnboardingPath = 'create' | 'import' | 'connect';
@@ -37,7 +41,6 @@ export interface OnboardingState {
   backupConfirmed: boolean;
 }
 
-// For injected wallet
 export interface InjectedWalletInfo {
   address: string;
   chainId: number;
@@ -59,19 +62,43 @@ export interface StoredViewerKey {
   privateKeyHex?: string;
 }
 
-export interface StoredWalletAccount {
+interface BaseWalletAccount {
   id: string;
   mode: WalletMode;
   address: string;
-  wrappedSecret?: string;
-  providerRef?: string;
-  wrapMethod?: WrapMethod;
-  wrapSalt?: string;
-  wrapIv?: string;
-  credentialId?: string;
   createdAt: number;
   backupConfirmedAt?: number;
 }
+
+export interface SmartWalletAccount extends BaseWalletAccount {
+  mode: 'smart-account';
+  providerRef: SmartWalletProvider;
+  credentialId: string;
+  publicKeyHex: HexString;
+  rpId: string;
+  smartAccountVersion: '1.1' | '1';
+  bundlerUrl: string;
+}
+
+export interface SelfCustodyWalletAccount extends BaseWalletAccount {
+  mode: 'self-custody';
+  wrappedSecret: string;
+  wrapMethod: WrapMethod;
+  wrapSalt: string;
+  wrapIv: string;
+  credentialId?: string;
+  providerRef?: 'local';
+}
+
+export interface ExternalWalletAccount extends BaseWalletAccount {
+  mode: 'external';
+  providerRef: string;
+}
+
+export type StoredWalletAccount =
+  | SmartWalletAccount
+  | SelfCustodyWalletAccount
+  | ExternalWalletAccount;
 
 export interface EncryptedBalance {
   tokenAddress: string;
@@ -101,6 +128,7 @@ export interface RegistrationPayload {
 export interface PasskeyCredentialResult {
   credentialId: string;
   prfSupported: boolean;
+  publicKeyHex?: HexString;
 }
 
 export interface WrappedSecret {
@@ -131,7 +159,7 @@ export interface ImportWalletOptions {
 export interface CreatedWalletResult {
   account: StoredWalletAccount;
   recoveryPhrase: string | null;
-  privateKey: string;
+  privateKey: string | null;
 }
 
 export interface AuthCredentials {
@@ -161,4 +189,55 @@ export interface TransactionStatus {
   status: TransactionStatusType;
   confirmations?: number;
   error?: string;
+}
+
+export interface SecureBackupItem {
+  label: string;
+  value: string;
+  description?: string;
+}
+
+export interface PassphraseModalState {
+  title: string;
+  description: string;
+  confirmLabel: string;
+  requireConfirm?: boolean;
+  onConfirm: (passphrase: string) => Promise<void>;
+}
+
+export interface BackupModalState {
+  title: string;
+  subtitle: string;
+  items: SecureBackupItem[];
+  onConfirm: () => Promise<void>;
+}
+
+export interface ViewerBalanceMap {
+  [keyId: string]: Record<string, DecryptedBalance | undefined>;
+}
+
+export interface HolderAddressMap {
+  [tokenAddress: string]: string | undefined;
+}
+
+export interface RegistrationStatusMap {
+  [tokenAddress: string]: boolean | undefined;
+}
+
+export interface LoadingState {
+  addKey?: boolean;
+  addWallet?: boolean;
+  register?: boolean;
+  passphrase?: boolean;
+  backup?: boolean;
+  disconnectWallet?: boolean;
+  [key: `send:${string}`]: boolean | undefined;
+  [key: `balance:${string}:${string}`]: boolean | undefined;
+}
+
+export interface SmartAccountConfig {
+  bundlerUrl: string;
+  provider: SmartWalletProvider;
+  version: '1.1' | '1';
+  rpId: string;
 }

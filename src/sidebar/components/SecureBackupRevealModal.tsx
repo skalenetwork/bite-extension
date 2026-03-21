@@ -1,4 +1,17 @@
-import React, { useEffect, useState } from 'react';
+import { useEffect, useState } from 'react';
+import type { SecureBackupItem } from '../../types';
+
+interface SecureBackupRevealModalProps {
+  open: boolean;
+  title?: string;
+  subtitle?: string;
+  items?: SecureBackupItem[];
+  confirmLabel?: string;
+  cancelLabel?: string;
+  loading?: boolean;
+  onClose: () => void;
+  onConfirm: () => Promise<void>;
+}
 
 export function SecureBackupRevealModal({
   open,
@@ -10,10 +23,10 @@ export function SecureBackupRevealModal({
   loading = false,
   onClose,
   onConfirm,
-}) {
+}: SecureBackupRevealModalProps): React.ReactElement | null {
   const [revealed, setRevealed] = useState(false);
-  const [copiedIndex, setCopiedIndex] = useState(null);
-  const [error, setError] = useState(null);
+  const [copiedIndex, setCopiedIndex] = useState<number | null>(null);
+  const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
     if (!open) {
@@ -25,21 +38,21 @@ export function SecureBackupRevealModal({
 
   if (!open) return null;
 
-  const handleCopy = async (value, index) => {
+  const handleCopy = async (value: string, index: number): Promise<void> => {
     try {
       await navigator.clipboard.writeText(value);
       setCopiedIndex(index);
       window.setTimeout(() => setCopiedIndex(null), 1500);
     } catch (copyError) {
-      setError(copyError.message || 'Failed to copy secret.');
+      setError(copyError instanceof Error ? copyError.message : 'Failed to copy secret.');
     }
   };
 
-  const handleConfirm = async () => {
+  const handleConfirm = async (): Promise<void> => {
     try {
       await onConfirm();
     } catch (confirmError) {
-      setError(confirmError.message || 'Failed to confirm backup.');
+      setError(confirmError instanceof Error ? confirmError.message : 'Failed to confirm backup.');
     }
   };
 
@@ -48,7 +61,9 @@ export function SecureBackupRevealModal({
       <div className="modal-content modal-large" onClick={(event) => event.stopPropagation()}>
         <div className="modal-header">
           <h3>{title}</h3>
-          <button className="modal-close" onClick={onClose}>×</button>
+          <button className="modal-close" onClick={onClose} type="button">
+            ×
+          </button>
         </div>
 
         <div className="modal-body">
@@ -69,7 +84,7 @@ export function SecureBackupRevealModal({
                   <button
                     type="button"
                     className="btn-copy btn-sm"
-                    onClick={() => handleCopy(item.value, index)}
+                    onClick={() => void handleCopy(item.value, index)}
                     disabled={!revealed}
                   >
                     {copiedIndex === index ? 'Copied' : 'Copy'}
@@ -78,19 +93,19 @@ export function SecureBackupRevealModal({
                 <code className={`secret-value ${revealed ? '' : 'secret-value-hidden'}`}>
                   {revealed ? item.value : 'Hidden until revealed'}
                 </code>
-                {item.description && <small className="hint">{item.description}</small>}
+                {item.description ? <small className="hint">{item.description}</small> : null}
               </div>
             ))}
           </div>
 
-          {error && <div className="error-message"><strong>Error:</strong> {error}</div>}
+          {error ? <div className="error-message"><strong>Error:</strong> {error}</div> : null}
         </div>
 
         <div className="modal-actions">
           <button type="button" className="btn-secondary" onClick={onClose} disabled={loading}>
             {cancelLabel}
           </button>
-          <button type="button" className="btn-primary" onClick={handleConfirm} disabled={loading}>
+          <button type="button" className="btn-primary" onClick={() => void handleConfirm()} disabled={loading}>
             {loading ? 'Working...' : confirmLabel}
           </button>
         </div>
